@@ -10,11 +10,11 @@ jobs:
           - os: macos-26
             arch: arm64
             package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
-            sha256: 4ae9a2f3bd6074fb9fc9ee4d486973878118c4d2dc44bf953ade6b7527bd0659
+            sha256: 367538920d2e0ffc75c2aafd9794ead4f065a0310f2f0e6e033fe6878c6618ca
           - os: macos-26-intel
             arch: x86_64
             package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
-            sha256: dd26d2ac82eca87694f672de7d1a4ec33418fdff6427fc67e5480cc90183d926
+            sha256: a4fc0655d5dbfeb97dbd2bdde1dd1a192f974dd55f7121f989d1c648912984cf
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download matching candidate
