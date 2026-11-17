@@ -2,7 +2,47 @@ name: macOS Connector Acceptance
 on:
   workflow_dispatch:
 jobs:
-  test:
-    runs-on: macos-14
+  macos-acceptance:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
+            sha256: 6805ba333d4a435eff711ea507900dfef519e4e3e1b7f4a24f3b9d835a380d30
+          - os: macos-13
+            arch: x64
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
+            sha256: 5dd6959474a63ffe0fce9fbd95e438d457edd368f710ab699e0298beadab36ac
+    runs-on: ${{ matrix.os }}
     steps:
-      - run: uname -a
+      - name: Download matching candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
+          EXPECTED_SHA256: ${{ matrix.sha256 }}
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}" || test "${{ matrix.arch }}" = "x64" -a "$(uname -m)" = "x86_64"
+          gh release download connector-macos-candidate-1.0.10 --repo chenxiangduo/guwenos-connector-downloads --pattern "$PACKAGE"
+          echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
+          unzip -q "$PACKAGE"
+          test -f connector/manifest.json
+          test -x connector/Install.command
+          test -x connector/runtime/node/bin/node
+      - name: Install and start Connector
+        run: |
+          bash connector/installer/install-connector-macos.sh connector
+          sleep 8
+          test -f "$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          launchctl list | grep com.guwenos.connector
+          curl -fsS http://127.0.0.1:48121/health | tee connector-health.json
+          node -e 'const h=require("./connector-health.json"); if(h.ready!==true||h.protocolRange?.min>1||h.protocolRange?.max<1) process.exit(1)'
+      - name: Exercise native macOS host
+        run: |
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          printf '%s\n' '{"requestId":"ci-root-inspect","op":"root-inspect","rootPath":"/Users/runner"}' | "$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.10/apps/local-connector/host/connector-host" --state-dir "$STATE" > native-host.jsonl
+          node -e 'const fs=require("node:fs");const r=fs.readFileSync("native-host.jsonl","utf8").trim().split(/\n/).map(JSON.parse).find(x=>x.requestId==="ci-root-inspect");if(!r?.ok)process.exit(1)'
+      - name: Stop Connector cleanly
+        if: always()
+        run: node "$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.10/installer/control-connector.mjs" stop || true
