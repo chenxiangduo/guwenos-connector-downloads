@@ -1,0 +1,8 @@
+name: macOS Connector Acceptance
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - run: uname -a
