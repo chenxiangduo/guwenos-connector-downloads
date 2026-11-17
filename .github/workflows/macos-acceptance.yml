@@ -7,12 +7,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-26
             arch: arm64
             package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
             sha256: 6805ba333d4a435eff711ea507900dfef519e4e3e1b7f4a24f3b9d835a380d30
-          - os: macos-13
-            arch: x64
+          - os: macos-26-intel
+            arch: x86_64
             package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
             sha256: 5dd6959474a63ffe0fce9fbd95e438d457edd368f710ab699e0298beadab36ac
     runs-on: ${{ matrix.os }}
@@ -23,7 +23,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
           EXPECTED_SHA256: ${{ matrix.sha256 }}
         run: |
-          test "$(uname -m)" = "${{ matrix.arch }}" || test "${{ matrix.arch }}" = "x64" -a "$(uname -m)" = "x86_64"
+          test "$(uname -m)" = "${{ matrix.arch }}"
           gh release download connector-macos-candidate-1.0.10 --repo chenxiangduo/guwenos-connector-downloads --pattern "$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
