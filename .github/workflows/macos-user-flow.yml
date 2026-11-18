@@ -37,6 +37,17 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
+      - name: Diagnose Connector process and listener
+        run: |
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.10"
+          ps aux | grep -E "main.mjs|start-connector" || true
+          lsof -nP -iTCP:48121 || true
+          cat "$STATE/launchagent.log" || true
+          cat "$STATE/launchagent.err.log" || true
+          if ! curl -fsS http://127.0.0.1:48121/health; then
+            "$TARGET/runtime/node/bin/node" "$TARGET/apps/local-connector/src/main.mjs" --config "$STATE/development.runtime.json" || true
+          fi
       - name: Verify complete user flow
         env:
           CIO_COOKIE_FILE: cookies.txt
