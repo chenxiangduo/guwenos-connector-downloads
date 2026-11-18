@@ -32,8 +32,9 @@ jobs:
           rm -f "$STATE/dialog-request.applescript.result"
           cat > "$STATE/click-dialog.applescript" <<APPLESCRIPT
           tell application "System Events"
-            if exists process "ConnectorRunner" then
-              tell process "ConnectorRunner"
+            repeat with p in (every process)
+              try
+                tell p
                 repeat with w in (every window)
                   if name of w is "CIO Native Diagnostic" then
                     set frontmost to true
@@ -44,11 +45,12 @@ jobs:
                     else
                       keystroke return
                     end if
-                    return true
+                    return "true:" & (name of p)
                   end if
                 end repeat
-              end tell
-            end if
+                end tell
+              end try
+            end repeat
             return false
           end tell
           APPLESCRIPT
@@ -58,13 +60,14 @@ jobs:
           for attempt in {1..30}; do
             answer="$(osascript "$STATE/click-dialog.applescript" 2>&1 || true)"
             echo "ATTEMPT=$attempt ANSWER=$answer"
-            if [ "$answer" = "true" ]; then clicked=1; break; fi
+            case "$answer" in true:*) clicked=1; break;; esac
             if ! kill -0 "$OPEN_PID" 2>/dev/null; then break; fi
             sleep 1
           done
           ps aux | grep -E 'ConnectorRunner|open -W' | grep -v grep > "$STATE/direct-processes.log" || true
           screencapture -x "$STATE/direct-final.png" || true
-          if [ "$clicked" -ne 1 ]; then pkill -x ConnectorRunner || true; fi
+          if [ "$clicked" -ne 1 ]; then pkill -x ConnectorRunner || true; pkill -x applet || true; fi
+          kill "$OPEN_PID" 2>/dev/null || true
           wait "$OPEN_PID" || true
           cat "$STATE/direct-open.log" || true
           cat "$STATE/dialog-request.applescript.result" || true
