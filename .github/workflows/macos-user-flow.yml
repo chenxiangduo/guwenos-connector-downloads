@@ -43,7 +43,7 @@ jobs:
           text = host.read_text()
           start = text.index('const script = `display dialog "工作台请求连接本机。')
           end = text.index('`;', start) + 2
-          replacement = 'const script = `display dialog "配对校验码：${escapeAppleScript(shortCode)}\\n请求账号：${escapeAppleScript(who)}" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接" with icon caution`;'
+          replacement = 'const script = `display dialog "配对校验码：${escapeAppleScript(shortCode)}" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接"`;'
           host.write_text(text[:start] + replacement + text[end:])
           PY
       - name: Diagnose Connector process and listener
