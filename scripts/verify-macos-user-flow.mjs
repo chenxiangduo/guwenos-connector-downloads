@@ -24,12 +24,16 @@ async function approvePairing() {
   const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    repeat with p in (every process whose name is "osascript")
+    repeat with p in (every process)
       if (count of windows of p) > 0 then
         tell p
-          set frontmost to true
-          if exists button "确认连接" of window 1 then
-            click button "确认连接" of window 1
+          if name of window 1 is "顾问 OS · 本机连接确认" then
+            set frontmost to true
+            if exists button "确认连接" of window 1 then
+              click button "确认连接" of window 1
+            else
+              keystroke return
+            end if
             return true
           end if
         end tell
@@ -42,6 +46,22 @@ end tell
 `], { timeout: 100_000 });
   if (result.stdout.trim() !== 'true') throw new Error(`Native pairing confirmation was not clicked: ${result.stdout} ${result.stderr}`);
   return result;
+}
+
+async function captureNativePairing() {
+  await execFileAsync('screencapture', ['-x', `${outputDir}/native-pairing.png`]).catch(error => ({ error }));
+  const ui = await execFileAsync('osascript', ['-e', `
+tell application "System Events"
+  set inventory to {}
+  repeat with p in (every process)
+    try
+      if (count of windows of p) > 0 then set end of inventory to {name of p, name of every window of p}
+    end try
+  end repeat
+  return inventory
+end tell
+`]).catch(error => ({ error: String(error), stdout: error.stdout, stderr: error.stderr }));
+  console.log('MACOS_NATIVE_PAIRING_UI', JSON.stringify(ui));
 }
 
 async function chooseProjectFolder() {
@@ -130,7 +150,8 @@ async function main() {
     console.log('MACOS_STAGE pairing');
     const approval = approvePairing().catch(error => ({ error }));
     await page.getByRole('button', { name: '已安装，连接本机' }).click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(12_000);
+    await captureNativePairing();
     console.log('MACOS_PAIRING_UI', JSON.stringify(await page.evaluate(() => ({
       notice: document.getElementById('notice')?.textContent,
       step: document.getElementById('connector-step')?.textContent,
