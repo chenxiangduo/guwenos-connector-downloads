@@ -24,21 +24,21 @@ async function approvePairing() {
   const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    repeat with p in (every process)
-      if (count of windows of p) > 0 then
-        tell p
-          if name of window 1 is "顾问 OS · 本机连接确认" then
+    if exists process "ConnectorRunner" then
+      tell process "ConnectorRunner"
+        repeat with w in (every window)
+          if name of w is "顾问 OS · 本机连接确认" then
             set frontmost to true
-            if exists button "确认连接" of window 1 then
-              click button "确认连接" of window 1
+            if exists button "确认连接" of w then
+              click button "确认连接" of w
             else
               keystroke return
             end if
             return true
           end if
-        end tell
-      end if
-    end repeat
+        end repeat
+      end tell
+    end if
     delay 1
   end repeat
   return false
@@ -71,10 +71,11 @@ async function chooseProjectFolder() {
       try {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  repeat with p in (every process)
-    repeat with w in (every UI element of p)
-      if (name of p is "ConnectorRunner") and (name of w is "Choose a Folder") then
-        set frontmost of p to true
+  if exists process "ConnectorRunner" then
+    tell process "ConnectorRunner"
+      repeat with w in (every UI element)
+        if name of w is "Choose a Folder" then
+          set frontmost to true
         set allItems to entire contents of w
         repeat with candidate in allItems
           try
@@ -88,9 +89,10 @@ tell application "System Events"
         set x to (item 1 of buttonPosition) + (item 1 of buttonSize) / 2
         set y to (item 2 of buttonPosition) + (item 2 of buttonSize) / 2
         return (x as text) & "," & (y as text)
-      end if
-    end repeat
-  end repeat
+        end if
+      end repeat
+    end tell
+  end if
 end tell
 `]);
         const [x, y] = result.stdout.trim().split(',').map(Number);
