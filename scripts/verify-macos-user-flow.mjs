@@ -68,7 +68,7 @@ async function main() {
   console.log('MACOS_BROWSER_VERSION', browser.version());
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
-  await context.grantPermissions(['localNetworkAccess', 'localNetwork', 'loopbackNetwork'], { origin: 'https://guwenos.cn' });
+  await context.grantPermissions(['local-network-access'], { origin: 'https://guwenos.cn' });
   console.log('MACOS_LOOPBACK_PERMISSION_GRANTED');
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
