@@ -7,7 +7,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
           - os: macos-26-intel
     runs-on: ${{ matrix.os }}
     steps:
@@ -19,6 +18,31 @@ jobs:
           echo '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f  '$PACKAGE | shasum -a 256 -c -
           unzip -q "$PACKAGE"
           bash connector/Install.command
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11"
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          cat > "$STATE/diagnostic-runner.applescript" <<'APPLESCRIPT'
+          on run
+            set homePath to POSIX path of (path to home folder)
+            set sourcePath to homePath & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript"
+            set resultPath to sourcePath & ".result"
+            try
+              set sourceText to read POSIX file sourcePath as «class utf8»
+              set resultValue to run script sourceText
+              if (class of resultValue) is record then
+                set resultText to button returned of resultValue
+              else
+                set resultText to resultValue as text
+              end if
+            on error errMsg number errNum
+              set resultText to "ERROR:" & errNum & ":" & errMsg
+            end try
+            set outputFile to open for access POSIX file resultPath with write permission
+            set eof outputFile to 0
+            write resultText to outputFile as «class utf8»
+            close access outputFile
+          end run
+          APPLESCRIPT
+          osacompile -o "$TARGET/ConnectorRunner.app" "$STATE/diagnostic-runner.applescript"
       - name: Open a dialog directly from the workflow shell
         timeout-minutes: 2
         run: |
@@ -27,7 +51,7 @@ jobs:
           TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11"
           mkdir -p "$STATE"
           cat > "$STATE/dialog-request.applescript" <<'APPLESCRIPT'
-          display dialog "Direct LaunchServices diagnostic" with title "CIO Native Diagnostic" buttons {"OK"} default button "OK"
+          display dialog "工作台请求连接本机。\n\n配对校验码：123456\n请求账号：体验用户\n\n请核对工作台上的校验码一致后再确认。" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接" with icon caution
           APPLESCRIPT
           rm -f "$STATE/dialog-request.applescript.result"
           cat > "$STATE/click-dialog.applescript" <<APPLESCRIPT
@@ -36,12 +60,12 @@ jobs:
               try
                 tell p
                 repeat with w in (every window)
-                  if name of w is "CIO Native Diagnostic" then
+                  if name of w is "顾问 OS · 本机连接确认" then
                     set frontmost to true
                     delay 1
                     do shell script "/usr/sbin/screencapture -x " & quoted form of "$STATE/direct-dialog.png"
-                    if exists button "OK" of w then
-                      click button "OK" of w
+                    if exists button "确认连接" of w then
+                      click button "确认连接" of w
                     else
                       keystroke return
                     end if
@@ -72,7 +96,7 @@ jobs:
           cat "$STATE/direct-open.log" || true
           cat "$STATE/dialog-request.applescript.result" || true
           test "$clicked" -eq 1
-          grep -q 'OK' "$STATE/dialog-request.applescript.result"
+          grep -q '确认连接' "$STATE/dialog-request.applescript.result"
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
