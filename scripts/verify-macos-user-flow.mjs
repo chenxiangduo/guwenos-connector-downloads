@@ -73,7 +73,7 @@ async function chooseProjectFolder() {
 tell application "System Events"
   repeat with p in (every process)
     repeat with w in (every UI element of p)
-      if (name of p is "ConnectorRunner") and (exists button "${name}" of w) then
+      if (name of p is "ConnectorRunner") and (name of w is "Choose a Folder") then
         set frontmost of p to true
         set buttonPosition to position of button "${name}" of w
         set buttonSize to size of button "${name}" of w
