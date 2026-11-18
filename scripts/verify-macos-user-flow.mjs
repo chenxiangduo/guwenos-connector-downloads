@@ -114,6 +114,16 @@ async function main() {
   console.log('MACOS_BROWSER_VERSION', browser.version());
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
+  if (process.env.CIO_E2E_PATCH_WEB_CLOCK === '1') {
+    await page.route('**/connector-client.mjs', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      const body = source.replace('timestamp<header.iat||timestamp>=header.exp', 'timestamp<header.iat-30||timestamp>=header.exp+30');
+      if (body === source) throw new Error('Web clock patch did not match connector-client.mjs');
+      await route.fulfill({ response, body });
+    });
+    console.log('MACOS_WEB_CLOCK_PATCH_APPLIED_FOR_CANDIDATE_ONLY');
+  }
   await context.grantPermissions(['local-network-access'], { origin: 'https://guwenos.cn' });
   console.log('MACOS_LOOPBACK_PERMISSION_GRANTED');
   const errors = [];
