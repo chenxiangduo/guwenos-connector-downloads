@@ -2,9 +2,10 @@ import { chromium } from 'playwright';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const execFileAsync = promisify(execFile);
-const outputDir = process.env.CIO_E2E_OUTPUT ?? 'artifacts/macos-user-flow';
+const outputDir = resolve(process.env.CIO_E2E_OUTPUT ?? 'artifacts/macos-user-flow');
 const projectDir = process.env.CIO_E2E_PROJECT ?? `${process.env.HOME}/Documents/cio-macos-synthetic-project`;
 
 async function readCookies() {
@@ -29,6 +30,7 @@ tell application "System Events"
         repeat with w in (every window)
           if name of w is "顾问 OS · 本机连接确认" then
             set frontmost to true
+            do shell script "/usr/sbin/screencapture -x " & quoted form of "${outputDir}/native-pairing.png"
             if exists button "确认连接" of w then
               click button "确认连接" of w
             else
