@@ -64,10 +64,16 @@ async function main() {
   await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
   const shellHealth = await execFileAsync('curl', ['-sS', '-i', 'http://127.0.0.1:48121/health']).catch(error => ({ message: error.message, stdout: error.stdout, stderr: error.stderr }));
   console.log('MACOS_SHELL_HEALTH', JSON.stringify(shellHealth));
-  const browser = await chromium.launch({ headless: false, args: ['--no-proxy-server'] });
+  const browser = await chromium.launch({ channel: 'chromium', headless: true, args: ['--no-proxy-server'] });
   console.log('MACOS_BROWSER_VERSION', browser.version());
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Browser.grantPermissions', {
+    origin: 'https://guwenos.cn',
+    permissions: ['localNetworkAccess', 'localNetwork', 'loopbackNetwork'],
+  });
+  console.log('MACOS_LOOPBACK_PERMISSION_GRANTED');
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => console.log('MACOS_CONSOLE', message.type(), message.text()));
@@ -81,9 +87,10 @@ async function main() {
       return { status: response.status, body: await response.text(), cookies: document.cookie };
     });
     console.log('MACOS_SESSION_DEBUG', JSON.stringify(sessionDebug));
+    console.log('MACOS_STAGE browser health probe');
     const healthDebug = await page.evaluate(async () => {
       try {
-        const response = await fetch('http://127.0.0.1:48121/health');
+        const response = await fetch('http://127.0.0.1:48121/health', { targetAddressSpace: 'loopback', signal: AbortSignal.timeout(10_000) });
         return { status: response.status, body: await response.text(), allowOrigin: response.headers.get('access-control-allow-origin'), allowPrivateNetwork: response.headers.get('access-control-allow-private-network') };
       } catch (error) { return { error: String(error) }; }
     });
@@ -92,22 +99,26 @@ async function main() {
     await page.waitForFunction(() => !document.getElementById('mac-connect-button')?.disabled, { timeout: 30_000 });
     await page.screenshot({ path: `${outputDir}/01-download-ready.png`, fullPage: true });
 
+    console.log('MACOS_STAGE pairing');
     const approval = approvePairing().catch(error => ({ error }));
     await page.getByRole('button', { name: '已安装，连接本机' }).click();
     await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 120_000 });
     const approvalResult = await approval;
     if (approvalResult?.error) throw approvalResult.error;
 
+    console.log('MACOS_STAGE project selection');
     const chooser = chooseProjectFolder().catch(error => ({ error }));
     await page.locator('#select-project-button').click();
     await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 120_000 });
     const chooserResult = await chooser;
     if (chooserResult?.error) throw chooserResult.error;
 
+    console.log('MACOS_STAGE project activation');
     await page.locator('#activate-project-button').click();
     await page.locator('#workbench-step').filter({ hasText: '可以进入' }).waitFor({ timeout: 60_000 });
     await page.screenshot({ path: `${outputDir}/02-project-activated.png`, fullPage: true });
 
+    console.log('MACOS_STAGE workbench');
     const popupPromise = context.waitForEvent('page', { timeout: 60_000 });
     await page.locator('#enter-workbench').click();
     const workbench = await popupPromise;

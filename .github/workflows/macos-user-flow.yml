@@ -51,6 +51,7 @@ jobs:
           curl -sS -i -H 'Origin: https://guwenos.cn' http://127.0.0.1:48121/health
           curl -sS -i -X OPTIONS -H 'Origin: https://guwenos.cn' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Private-Network: true' http://127.0.0.1:48121/health
       - name: Verify complete user flow
+        timeout-minutes: 6
         env:
           CIO_COOKIE_FILE: cookies.txt
           CIO_E2E_OUTPUT: artifacts/macos-user-flow
