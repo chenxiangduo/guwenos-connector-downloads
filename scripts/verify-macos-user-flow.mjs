@@ -80,7 +80,7 @@ tell application "System Events"
     try
       tell p
       repeat with w in (every UI element)
-        if name of w is "Choose a Folder" then
+        if (name of w is "Choose a Folder") or (name of w is "选择授权目录") then
           set frontmost to true
         set allItems to entire contents of w
         repeat with candidate in allItems
