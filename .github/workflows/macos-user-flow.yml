@@ -1,0 +1,58 @@
+name: macOS Full User Flow
+on:
+  workflow_dispatch:
+jobs:
+  full-user-flow:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            arch: arm64
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
+            sha256: 367538920d2e0ffc75c2aafd9794ead4f065a0310f2f0e6e033fe6878c6618ca
+          - os: macos-26-intel
+            arch: x86_64
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
+            sha256: a4fc0655d5dbfeb97dbd2bdde1dd1a192f974dd55f7121f989d1c648912984cf
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+      - name: Install browser
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install chromium
+      - name: Create synthetic experience account and download Connector
+        env:
+          PACKAGE: ${{ matrix.package }}
+          EXPECTED_SHA256: ${{ matrix.sha256 }}
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
+          curl -fsSL -b cookies.txt -o "$PACKAGE" "https://guwenos.cn/downloads/connector/$PACKAGE"
+          echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
+          unzip -q "$PACKAGE"
+      - name: Install Connector
+        run: bash connector/installer/install-connector-macos.sh connector
+      - name: Verify complete user flow
+        env:
+          CIO_COOKIE_FILE: cookies.txt
+          CIO_E2E_OUTPUT: artifacts/macos-user-flow
+        run: node scripts/verify-macos-user-flow.mjs
+      - name: Collect Connector logs
+        if: always()
+        run: |
+          mkdir -p artifacts/connector-logs
+          cp "$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state/"*.log artifacts/connector-logs/ 2>/dev/null || true
+          launchctl list | grep com.guwenos.connector || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-user-flow-${{ matrix.arch }}
+          path: |
+            artifacts/macos-user-flow/
+            artifacts/connector-logs/
