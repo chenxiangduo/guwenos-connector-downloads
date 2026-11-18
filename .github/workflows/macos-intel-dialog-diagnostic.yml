@@ -24,7 +24,7 @@ jobs:
           on run
             set resultPath to (POSIX path of (path to home folder)) & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript.result"
             try
-              set resultValue to display dialog "工作台请求连接本机。\n\n配对校验码：123456\n请求账号：体验用户\n\n请核对工作台上的校验码一致后再确认。" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接"
+              set resultValue to display dialog "The workbench requested a local connection.\n\nPairing code: 123456\nAccount: Experience User\n\nConfirm that the code matches the workbench before continuing." with title "Consultant OS - Local Connection" buttons {"Cancel", "Connect"} default button "Connect"
               set resultText to button returned of resultValue
             on error errMsg number errNum
               set resultText to "ERROR:" & errNum & ":" & errMsg
@@ -55,12 +55,12 @@ jobs:
                 tell p
                 if (count of windows) > 0 then set end of inventory to {name of p, name of every window}
                 repeat with w in (every window)
-                  if name of w contains "本机连接确认" then
+                  if name of w contains "Local Connection" then
                     set frontmost to true
                     delay 1
                     do shell script "/usr/sbin/screencapture -x " & quoted form of "$STATE/direct-dialog.png"
-                    if exists button "确认连接" of w then
-                      click button "确认连接" of w
+                    if exists button "Connect" of w then
+                      click button "Connect" of w
                     else
                       keystroke return
                     end if
@@ -93,7 +93,7 @@ jobs:
           cat "$STATE/direct-open.log" || true
           cat "$STATE/dialog-request.applescript.result" || true
           test "$clicked" -eq 1
-          grep -q '确认连接' "$STATE/dialog-request.applescript.result"
+          grep -q 'Connect' "$STATE/dialog-request.applescript.result"
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
