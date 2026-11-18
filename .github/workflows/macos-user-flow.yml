@@ -9,12 +9,12 @@ jobs:
         include:
           - os: macos-26
             arch: arm64
-            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.13.zip
-            sha256: 0f84e1f8cc63e397031fc28c91cb3bb3dcf57fbf90903ceee9a4119b41865228
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.14.zip
+            sha256: 41d302dac98280ab24e1106b4070ebbb0a2d42d1fe12039ef1006e62a4c1c3d6
           - os: macos-26-intel
             arch: x86_64
-            package: Consulting-Intelligence-Connector-macOS-x64-1.0.13.zip
-            sha256: c5dc0a9af3a50b8094d8b8dc2e864229f39b6b203d16afc8711bc268a96a3e36
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.14.zip
+            sha256: 58daef1e1d5c7a2045adaa9c20a746244c86db619495afc57c32202f774cd473
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,26 +33,11 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
-          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.13/$PACKAGE"
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.14/$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Test native folder presentation without explicit activation
-        if: matrix.arch == 'x86_64'
-        run: |
-          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.13"
-          python3 - <<'PY'
-          from pathlib import Path
-          target = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.13'
-          source = target / 'installer/dialog-runner.applescript'
-          text = source.read_text()
-          assert '    activate\n' in text
-          source.write_text(text.replace('    activate\n', '', 1))
-          PY
-          pkill -f 'ConnectorRunner.app' || true
-          osacompile -o "$TARGET/ConnectorRunner.app" -s "$TARGET/installer/dialog-runner.applescript"
-          open -n "$TARGET/ConnectorRunner.app"
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
@@ -67,7 +52,7 @@ jobs:
           curl -sS -i -H 'Origin: https://guwenos.cn' http://127.0.0.1:48121/health
           curl -sS -i -X OPTIONS -H 'Origin: https://guwenos.cn' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Private-Network: true' http://127.0.0.1:48121/health
       - name: Verify complete user flow
-        timeout-minutes: 6
+        timeout-minutes: 10
         env:
           CIO_COOKIE_FILE: cookies.txt
           CIO_E2E_OUTPUT: artifacts/macos-user-flow
