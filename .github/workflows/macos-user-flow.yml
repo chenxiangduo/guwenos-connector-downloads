@@ -38,6 +38,30 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
+      - name: Compare precompiled dialogs in an interactive session
+        if: matrix.arch == 'x86_64'
+        run: |
+          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          launchctl unload "$PLIST"
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.12"
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          export TARGET STATE
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          target = Path(os.environ['TARGET'])
+          state = Path(os.environ['STATE'])
+          config = json.loads((target / 'config/production.json').read_text())
+          config.update({
+            'installRoot': str(target),
+            'connectorVersion': '1.0.12',
+            'stateRoot': str(state),
+            'hostExe': str(target / 'apps/local-connector/host/connector-host'),
+            'nodeExecutable': str(target / 'runtime/node/bin/node'),
+          })
+          (state / 'interactive.runtime.json').write_text(json.dumps(config, indent=2) + '\n')
+          PY
+          "$TARGET/runtime/node/bin/node" "$TARGET/apps/local-connector/src/main.mjs" --config "$STATE/interactive.runtime.json" > "$STATE/interactive.log" 2>&1 &
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
