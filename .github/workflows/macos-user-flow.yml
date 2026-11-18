@@ -55,6 +55,7 @@ jobs:
         env:
           CIO_COOKIE_FILE: cookies.txt
           CIO_E2E_OUTPUT: artifacts/macos-user-flow
+          CIO_E2E_PATCH_WEB_CLOCK: '1'
         run: node scripts/verify-macos-user-flow.mjs
       - name: Collect Connector logs
         if: always()
