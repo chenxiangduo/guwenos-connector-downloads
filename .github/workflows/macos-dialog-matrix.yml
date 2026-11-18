@@ -1,0 +1,127 @@
+name: Isolate macOS 26 Intel dialog behavior
+on:
+  workflow_dispatch:
+jobs:
+  dialog:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: english-one
+            title: CIO Native Diagnostic
+            body: Direct dialog test
+            buttons: '{"OK"}'
+            button: OK
+          - case: english-two
+            title: CIO Native Diagnostic
+            body: Direct dialog test
+            buttons: '{"Cancel", "Connect"}'
+            button: Connect
+          - case: chinese-one
+            title: 本机连接确认
+            body: 配对校验码：123456
+            buttons: '{"确认连接"}'
+            button: 确认连接
+          - case: chinese-two
+            title: 本机连接确认
+            body: 配对校验码：123456
+            buttons: '{"拒绝", "确认连接"}'
+            button: 确认连接
+    runs-on: macos-26-intel
+    env:
+      CASE_TITLE: ${{ matrix.title }}
+      CASE_BODY: ${{ matrix.body }}
+      CASE_BUTTONS: ${{ matrix.buttons }}
+      CASE_BUTTON: ${{ matrix.button }}
+    steps:
+      - name: Download and install the unchanged release
+        run: |
+          set -euo pipefail
+          PACKAGE=Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-1.0.11/$PACKAGE"
+          echo '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f  '$PACKAGE | shasum -a 256 -c -
+          unzip -q "$PACKAGE"
+          bash connector/Install.command
+      - name: Build and open one static dialog variant
+        timeout-minutes: 3
+        run: |
+          set -uo pipefail
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11"
+          mkdir -p "$STATE"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          state = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/connector-state'
+          lit = lambda value: json.dumps(value, ensure_ascii=False)
+          source = f'''on run
+            set resultPath to (POSIX path of (path to home folder)) & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript.result"
+            try
+              set resultValue to display dialog {lit(os.environ['CASE_BODY'])} with title {lit(os.environ['CASE_TITLE'])} buttons {os.environ['CASE_BUTTONS']} default button {lit(os.environ['CASE_BUTTON'])}
+              set resultText to button returned of resultValue
+            on error errMsg number errNum
+              set resultText to "ERROR:" & errNum & ":" & errMsg
+            end try
+            set outputFile to open for access POSIX file resultPath with write permission
+            set eof outputFile to 0
+            write resultText to outputFile as «class utf8»
+            close access outputFile
+          end run
+          '''
+          path = state / 'static-dialog.applescript'
+          path.write_text(source)
+          PY
+          osacompile -o "$TARGET/ConnectorRunner.app" "$STATE/static-dialog.applescript"
+          rm -f "$STATE/dialog-request.applescript.result"
+          cat > "$STATE/click-dialog.applescript" <<APPLESCRIPT
+          tell application "System Events"
+            repeat with p in (every process)
+              try
+                tell p
+                  repeat with w in (every window)
+                    if name of w contains "$CASE_TITLE" then
+                      set frontmost to true
+                      delay 1
+                      do shell script "/usr/sbin/screencapture -x " & quoted form of "$STATE/direct-dialog.png"
+                      if exists button "$CASE_BUTTON" of w then
+                        click button "$CASE_BUTTON" of w
+                      else
+                        keystroke return
+                      end if
+                      return "true:" & (name of p)
+                    end if
+                  end repeat
+                end tell
+              end try
+            end repeat
+            return false
+          end tell
+          APPLESCRIPT
+          open -W -n "$TARGET/ConnectorRunner.app" > "$STATE/direct-open.log" 2>&1 &
+          OPEN_PID=$!
+          clicked=0
+          for attempt in {1..8}; do
+            answer="$(osascript "$STATE/click-dialog.applescript" 2>&1 || true)"
+            echo "ATTEMPT=$attempt ANSWER=$answer"
+            case "$answer" in true:*) clicked=1; break;; esac
+            if [ -f "$STATE/dialog-request.applescript.result" ]; then break; fi
+            if ! kill -0 "$OPEN_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$clicked" -ne 1 ]; then pkill -x ConnectorRunner || true; pkill -x applet || true; fi
+          kill "$OPEN_PID" 2>/dev/null || true
+          wait "$OPEN_PID" || true
+          cat "$STATE/direct-open.log" || true
+          cat "$STATE/dialog-request.applescript.result" || true
+          test "$clicked" -eq 1
+          grep -q "$CASE_BUTTON" "$STATE/dialog-request.applescript.result"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialog-${{ matrix.case }}
+          path: |
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/direct-*.log
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/direct-*.png
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript.result
+          if-no-files-found: warn
