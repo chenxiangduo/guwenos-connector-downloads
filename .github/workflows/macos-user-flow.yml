@@ -37,6 +37,31 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
+      - name: Instrument Connector request failures
+        run: |
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.10"
+          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          PID="$(lsof -t -iTCP:48121 || true)"
+          if [ -n "$PID" ]; then kill "$PID"; fi
+          launchctl unload "$PLIST" 2>/dev/null || true
+          python3 - "$TARGET" <<'PY'
+          from pathlib import Path
+          import sys
+          target = Path(sys.argv[1])
+          transport = target / 'apps/local-connector/src/transport/loopback-server.mjs'
+          text = transport.read_text()
+          old = "      const message = statusCode >= 500 ? 'Request handler failed' : error.message;\n"
+          new = "      if (statusCode >= 500) process.stderr.write(`CONNECTOR_REQUEST_FAILURE ${error?.stack ?? error}\\n`);\n" + old
+          assert old in text
+          transport.write_text(text.replace(old, new, 1))
+          starter = target / 'installer/start-connector.mjs'
+          text = starter.read_text()
+          old = "detached: true, stdio: 'ignore', windowsHide: true"
+          new = "detached: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true"
+          assert old in text
+          starter.write_text(text.replace(old, new, 1))
+          PY
+          launchctl load "$PLIST"
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
