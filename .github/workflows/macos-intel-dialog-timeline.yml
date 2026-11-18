@@ -1,0 +1,65 @@
+name: Measure macOS Intel Connector window latency
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: macos-26-intel
+    timeout-minutes: 9
+    steps:
+      - name: Install unchanged candidate
+        run: |
+          set -euo pipefail
+          package=Consulting-Intelligence-Connector-macOS-x64-1.0.14.zip
+          curl --max-time 90 -fsSL -o "$package" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.14/$package"
+          echo "58daef1e1d5c7a2045adaa9c20a746244c86db619495afc57c32202f774cd473  $package" | shasum -a 256 -c -
+          unzip -q "$package"
+          bash connector/Install.command
+      - name: Measure the idle loop and window creation
+        run: |
+          set -euo pipefail
+          state="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          target="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.14"
+          mkdir -p artifacts
+          export STATE_DIR="$state"
+          python3 - "$target/installer/dialog-runner.applescript" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]).read_text()
+          source = source.replace('on run\n', 'on run\n  my traceStage("started")\n', 1)
+          source = source.replace('  try\n    set operation', '  my traceStage("request-read")\n  try\n    set operation', 1)
+          source = source.replace('    activate\n', '    my traceStage("before-activate")\n    activate\n    my traceStage("after-activate")\n', 1)
+          source = source.replace('      set resultValue to display dialog "配对校验码："', '      my traceStage("before-dialog")\n      set resultValue to display dialog "配对校验码："', 1)
+          source = source.replace(' default button "确认连接"\n', ' default button "确认连接" giving up after 4\n      my traceStage("after-dialog")\n', 1)
+          source += '''
+          on traceStage(stageName)
+            set stateDir to (POSIX path of (path to home folder)) & "Library/Application Support/ConsultingIntelligenceOS/connector-state/"
+            set f to open for access POSIX file (stateDir & "diagnostic-trace.log") with write permission
+            write (stageName & tab & ((current date) as text) & linefeed) to f starting at eof as «class utf8»
+            close access f
+          end traceStage
+          '''
+          Path('trace.applescript').write_text(source)
+          PY
+          pgrep -f "$target/ConnectorRunner.app/Contents/MacOS/applet" | while read -r pid; do kill "$pid"; done || true
+          osacompile -s -o "$target/ConnectorRunner.app" trace.applescript
+          date -u '+REQUEST_CREATED %FT%TZ'
+          printf 'approve-pairing\n123456\n' > "$state/dialog-request.txt"
+          open -n "$target/ConnectorRunner.app"
+          for n in {1..150}; do
+            if [ -s "$state/dialog-request.txt.result" ]; then break; fi
+            sleep 2
+          done
+          date -u '+OBSERVATION_ENDED %FT%TZ'
+          if [ -f "$state/diagnostic-trace.log" ]; then
+            cat "$state/diagnostic-trace.log"
+            cp "$state/diagnostic-trace.log" artifacts/
+          fi
+          if [ -f "$state/dialog-request.txt.result" ]; then cat "$state/dialog-request.txt.result"; fi
+          screencapture -x artifacts/desktop.png || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-dialog-timeline
+          path: artifacts/
