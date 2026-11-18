@@ -81,6 +81,12 @@ jobs:
           new = "  process.stderr.write(`JWS_CLOCK_DEBUG ${JSON.stringify({ current, iat: header.iat, exp: header.exp, tolerance: clockToleranceSeconds })}\\n`);\n" + old
           assert old in text
           envelope.write_text(text.replace(old, new, 1))
+          control = Path('connector/apps/local-connector/src/runtime/control-plane-client.mjs')
+          text = control.read_text()
+          text = text.replace('now: now?.() ?? new Date() });', 'now: now?.() ?? new Date(), clockToleranceSeconds: 30 });')
+          text = text.replace('now: clock() });', 'now: clock(), clockToleranceSeconds: 30 });')
+          assert text.count('clockToleranceSeconds: 30') == 4
+          control.write_text(text)
           PY
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
