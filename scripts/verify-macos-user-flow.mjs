@@ -71,6 +71,7 @@ async function main() {
   try {
     await page.goto('https://guwenos.cn/', { waitUntil: 'domcontentloaded' });
     await page.getByText('macOS Connector 已就绪', { exact: true }).waitFor({ timeout: 30_000 });
+    await page.waitForFunction(() => !document.getElementById('mac-connect-button')?.disabled, { timeout: 30_000 });
     await page.screenshot({ path: `${outputDir}/01-download-ready.png`, fullPage: true });
 
     const approval = approvePairing().catch(error => ({ error }));
