@@ -73,7 +73,7 @@ async function chooseProjectFolder() {
 tell application "System Events"
   repeat with p in (every process)
     repeat with w in (every window of p)
-      if name of w is "选择授权目录" then
+      if (name of p is "ConnectorRunner") and (exists button "${name}" of w) then
         set frontmost of p to true
         set buttonPosition to position of button "${name}" of w
         set buttonSize to size of button "${name}" of w
