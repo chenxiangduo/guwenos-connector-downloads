@@ -38,6 +38,13 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
+      - name: Test the Aqua session on macOS 26 Intel
+        if: matrix.arch == 'x86_64'
+        run: |
+          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          plutil -insert LimitLoadToSessionType -string Aqua "$PLIST"
+          launchctl unload "$PLIST"
+          launchctl load "$PLIST"
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
