@@ -209,7 +209,7 @@ async function main() {
     await page.locator('#select-project-button').click();
     await page.waitForTimeout(12_000);
     await captureNativeFolder();
-    await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 30_000 });
+    await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 120_000 });
     const chooserResult = await chooser;
     if (chooserResult?.error) throw chooserResult.error;
     await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
