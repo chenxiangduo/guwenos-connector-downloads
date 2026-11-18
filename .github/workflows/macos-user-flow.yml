@@ -9,12 +9,12 @@ jobs:
         include:
           - os: macos-26
             arch: arm64
-            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.12.zip
-            sha256: 667af8676f0aa942f4b979e45c2e828eeb7d9f807d69cf6d7ff44f4d9c2ed60d
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.13.zip
+            sha256: 0f84e1f8cc63e397031fc28c91cb3bb3dcf57fbf90903ceee9a4119b41865228
           - os: macos-26-intel
             arch: x86_64
-            package: Consulting-Intelligence-Connector-macOS-x64-1.0.12.zip
-            sha256: a379703badd159acdb86cd0db9a514578e844f5801f9b0f58d109a9e4c0c5fbd
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.13.zip
+            sha256: c5dc0a9af3a50b8094d8b8dc2e864229f39b6b203d16afc8711bc268a96a3e36
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,35 +33,11 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
-          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.12/$PACKAGE"
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.13/$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Compare precompiled dialogs in an interactive session
-        if: matrix.arch == 'x86_64'
-        run: |
-          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
-          launchctl unload "$PLIST"
-          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.12"
-          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
-          export TARGET STATE
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          target = Path(os.environ['TARGET'])
-          state = Path(os.environ['STATE'])
-          config = json.loads((target / 'config/production.json').read_text())
-          config.update({
-            'installRoot': str(target),
-            'connectorVersion': '1.0.12',
-            'stateRoot': str(state),
-            'hostExe': str(target / 'apps/local-connector/host/connector-host'),
-            'nodeExecutable': str(target / 'runtime/node/bin/node'),
-          })
-          (state / 'interactive.runtime.json').write_text(json.dumps(config, indent=2) + '\n')
-          PY
-          "$TARGET/runtime/node/bin/node" "$TARGET/apps/local-connector/src/main.mjs" --config "$STATE/interactive.runtime.json" > "$STATE/interactive.log" 2>&1 &
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
