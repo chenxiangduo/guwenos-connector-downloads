@@ -37,7 +37,7 @@ jobs:
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
-        run: bash connector/installer/install-connector-macos.sh connector
+        run: bash connector/Install.command
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
