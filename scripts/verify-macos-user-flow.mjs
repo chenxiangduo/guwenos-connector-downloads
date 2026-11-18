@@ -164,7 +164,7 @@ async function main() {
     await page.screenshot({ path: `${outputDir}/01-download-ready.png`, fullPage: true });
 
     console.log('MACOS_STAGE pairing');
-    const approval = approvePairing().catch(error => ({ error }));
+    const approval = approvePairing().catch(error => { console.log('MACOS_APPROVAL_ERROR', String(error), error.stdout, error.stderr); return { error }; });
     await page.getByRole('button', { name: '已安装，连接本机' }).click();
     await page.waitForTimeout(12_000);
     await captureNativePairing();
@@ -178,7 +178,7 @@ async function main() {
     if (approvalResult?.error) throw approvalResult.error;
 
     console.log('MACOS_STAGE project selection');
-    const chooser = chooseProjectFolder().catch(error => ({ error }));
+    const chooser = chooseProjectFolder().catch(error => { console.log('MACOS_CHOOSER_ERROR', String(error), error.stdout, error.stderr); return { error }; });
     await page.locator('#select-project-button').click();
     await page.waitForTimeout(12_000);
     await captureNativeFolder();
