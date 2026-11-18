@@ -69,20 +69,20 @@ async function chooseProjectFolder() {
 tell application "System Events"
   repeat 90
     repeat with p in (every process)
-      if (count of windows of p) > 0 then
-        if name of window 1 of p is "选择授权目录" then
+      repeat with w in (every window of p)
+        if name of w is "选择授权目录" then
           tell p
             set frontmost to true
-            click button "New Folder" of window 1
+            click button "New Folder" of w
             delay 0.5
             keystroke "cio-macos-synthetic-project"
             keystroke return
             delay 1
-            click button "Choose" of window 1
+            click button "Choose" of w
           end tell
           return true
         end if
-      end if
+      end repeat
     end repeat
     delay 1
   end repeat
