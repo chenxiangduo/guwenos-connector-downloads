@@ -62,7 +62,7 @@ async function main() {
   await mkdir(outputDir, { recursive: true });
   await mkdir(projectDir, { recursive: true });
   await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ['--no-proxy-server'] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const errors = [];
