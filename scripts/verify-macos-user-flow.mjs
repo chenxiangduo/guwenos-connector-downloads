@@ -58,6 +58,21 @@ end tell
 `], { timeout: 100_000 });
 }
 
+async function captureNativeFolder() {
+  await execFileAsync('screencapture', ['-x', `${outputDir}/native-folder.png`]).catch(error => ({ error }));
+  const ui = await execFileAsync('osascript', ['-e', `
+tell application "System Events"
+  if exists process "osascript" then
+    tell process "osascript"
+      set frontmost to true
+      return {name of windows, name of every UI element of front window}
+    end tell
+  end if
+end tell
+`]).catch(error => ({ error: String(error), stdout: error.stdout, stderr: error.stderr }));
+  console.log('MACOS_NATIVE_FOLDER_UI', JSON.stringify(ui));
+}
+
 async function main() {
   await mkdir(outputDir, { recursive: true });
   await mkdir(projectDir, { recursive: true });
@@ -117,6 +132,8 @@ async function main() {
     console.log('MACOS_STAGE project selection');
     const chooser = chooseProjectFolder().catch(error => ({ error }));
     await page.locator('#select-project-button').click();
+    await page.waitForTimeout(12_000);
+    await captureNativeFolder();
     await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 120_000 });
     const chooserResult = await chooser;
     if (chooserResult?.error) throw chooserResult.error;
