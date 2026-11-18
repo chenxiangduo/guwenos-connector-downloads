@@ -11,7 +11,7 @@ jobs:
             arch: arm64
             package: Consulting-Intelligence-Connector-macOS-arm64-1.0.11.zip
             sha256: fabdba2fe57399280448167961c3872e5e9078b5f0399a3f7ef528f4799c3920
-          - os: macos-26-intel
+          - os: macos-15-intel
             arch: x86_64
             package: Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip
             sha256: 0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f
