@@ -65,30 +65,34 @@ end tell
 }
 
 async function chooseProjectFolder() {
-  return execFileAsync('osascript', ['-e', `
+  async function clickNativeButton(name) {
+    const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  repeat 90
-    repeat with p in (every process)
-      repeat with w in (every window of p)
-        if name of w is "选择授权目录" then
-          tell p
-            set frontmost to true
-            click button "New Folder" of w
-            delay 0.5
-            keystroke "cio-macos-synthetic-project"
-            keystroke return
-            delay 1
-            click button "Choose" of w
-          end tell
-          return true
-        end if
-      end repeat
+  repeat with p in (every process)
+    repeat with w in (every window of p)
+      if name of w is "选择授权目录" then
+        set frontmost of p to true
+        set buttonPosition to position of button "${name}" of w
+        set buttonSize to size of button "${name}" of w
+        set x to (item 1 of buttonPosition) + (item 1 of buttonSize) / 2
+        set y to (item 2 of buttonPosition) + (item 2 of buttonSize) / 2
+        return (x as text) & "," & (y as text)
+      end if
     end repeat
-    delay 1
   end repeat
-  return false
 end tell
-`], { timeout: 100_000 });
+`]);
+    const [x, y] = result.stdout.trim().split(',').map(Number);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`Cannot locate native button ${name}: ${result.stdout}`);
+    await execFileAsync('cliclick', [`c:${x},${y}`]);
+  }
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  await clickNativeButton('New Folder');
+  await new Promise(resolve => setTimeout(resolve, 500));
+  await execFileAsync('cliclick', ['t:cio-macos-synthetic-project']);
+  await execFileAsync('cliclick', ['kp:return']);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  await clickNativeButton('Choose');
 }
 
 async function captureNativeFolder() {
