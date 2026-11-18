@@ -62,11 +62,14 @@ async function main() {
   await mkdir(outputDir, { recursive: true });
   await mkdir(projectDir, { recursive: true });
   await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
+  const shellHealth = await execFileAsync('curl', ['-sS', '-i', 'http://127.0.0.1:48121/health']).catch(error => ({ message: error.message, stdout: error.stdout, stderr: error.stderr }));
+  console.log('MACOS_SHELL_HEALTH', JSON.stringify(shellHealth));
   const browser = await chromium.launch({ headless: true, args: ['--no-proxy-server'] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('requestfailed', request => console.log('MACOS_REQUEST_FAILED', request.url(), request.failure()?.errorText));
   try {
     await page.goto('https://guwenos.cn/login/', { waitUntil: 'domcontentloaded' });
     await page.locator('#demo-submit').click();
