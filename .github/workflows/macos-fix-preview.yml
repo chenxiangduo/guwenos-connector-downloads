@@ -124,7 +124,14 @@ jobs:
           APPLET
           osacompile -o connector/ConnectorRunner.app connector/installer/dialog-runner.applescript
       - name: Install Connector
-        run: bash connector/installer/install-connector-macos.sh connector
+        run: |
+          bash connector/installer/install-connector-macos.sh connector
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+            plutil -insert SessionCreate -bool YES "$PLIST"
+            launchctl unload "$PLIST"
+            launchctl load "$PLIST"
+          fi
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
