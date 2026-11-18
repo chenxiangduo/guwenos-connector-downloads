@@ -72,7 +72,7 @@ end tell
 async function chooseProjectFolder() {
   async function clickNativeButton(name) {
     let lastError;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
@@ -85,7 +85,7 @@ tell application "System Events"
         set allItems to entire contents of w
         repeat with candidate in allItems
           try
-            if (class of candidate is button) and (name of candidate is "${name}") then
+            if (class of candidate is button) and (name of candidate is "${name}") and (enabled of candidate) then
               set buttonPosition to position of candidate
               set buttonSize to size of candidate
               exit repeat
@@ -117,7 +117,7 @@ end tell
   await clickNativeButton('New Folder');
   await new Promise(resolve => setTimeout(resolve, 500));
   await execFileAsync('cliclick', ['t:cio-macos-synthetic-project']);
-  await execFileAsync('cliclick', ['kp:return']);
+  await clickNativeButton('Create');
   await new Promise(resolve => setTimeout(resolve, 1000));
   await clickNativeButton('Choose');
   console.log('MACOS_CHOOSER_CLICKS_DONE');
