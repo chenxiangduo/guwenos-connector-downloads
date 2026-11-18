@@ -10,11 +10,11 @@ jobs:
           - os: macos-26
             arch: arm64
             package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
-            sha256: 367538920d2e0ffc75c2aafd9794ead4f065a0310f2f0e6e033fe6878c6618ca
+            sha256: 7a1b4e272eb9016e61ed5f2465768457097c5f01895b1f2058afffe8a3c29658
           - os: macos-26-intel
             arch: x86_64
             package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
-            sha256: a4fc0655d5dbfeb97dbd2bdde1dd1a192f974dd55f7121f989d1c648912984cf
+            sha256: 30d68c798b19faef602e578a3280c32eaadfb57bc3c8d6688692e6840f82ec3c
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
