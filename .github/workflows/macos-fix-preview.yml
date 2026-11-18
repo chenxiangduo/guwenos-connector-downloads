@@ -50,6 +50,18 @@ jobs:
           new = "    if (issuedAt !== undefined && dateValue(issuedAt, 'ticket issuedAt').getTime() > now().getTime() + 30_000) throw pairingError('PAIRING_TICKET_INVALID', 'Pairing ticket is not active yet', 400);\n"
           assert old in text
           service.write_text(text.replace(old, new, 1))
+          host = Path('connector/apps/local-connector/src/native/mac-host.mjs')
+          text = host.read_text()
+          old = "  } catch (error) {\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
+          new = "  } catch (error) {\n    console.error(error);\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
+          assert old in text
+          host.write_text(text.replace(old, new, 1))
+          starter = Path('connector/installer/start-connector.mjs')
+          text = starter.read_text()
+          old = "detached: true, stdio: 'ignore', windowsHide: true"
+          new = "detached: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true"
+          assert old in text
+          starter.write_text(text.replace(old, new, 1))
           PY
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
