@@ -72,7 +72,7 @@ async function chooseProjectFolder() {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat with p in (every process)
-    repeat with w in (every window of p)
+    repeat with w in (every UI element of p)
       if (name of p is "ConnectorRunner") and (exists button "${name}" of w) then
         set frontmost of p to true
         set buttonPosition to position of button "${name}" of w
@@ -109,10 +109,9 @@ async function captureNativeFolder() {
   await execFileAsync('screencapture', ['-x', `${outputDir}/native-folder.png`]).catch(error => ({ error }));
   const ui = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  if exists process "osascript" then
-    tell process "osascript"
-      set frontmost to true
-      return {name of windows, name of every UI element of front window}
+  if exists process "ConnectorRunner" then
+    tell process "ConnectorRunner"
+      return {name of every UI element, name of every window}
     end tell
   end if
 end tell
