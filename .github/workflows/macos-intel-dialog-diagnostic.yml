@@ -1,0 +1,83 @@
+name: Diagnose Intel native dialogs
+on:
+  workflow_dispatch:
+jobs:
+  direct-dialog:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+          - os: macos-26-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download and install the unchanged release
+        run: |
+          set -euo pipefail
+          PACKAGE=Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-1.0.11/$PACKAGE"
+          echo '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f  '$PACKAGE | shasum -a 256 -c -
+          unzip -q "$PACKAGE"
+          bash connector/Install.command
+      - name: Open a dialog directly from the workflow shell
+        timeout-minutes: 2
+        run: |
+          set -uo pipefail
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11"
+          mkdir -p "$STATE"
+          cat > "$STATE/dialog-request.applescript" <<'APPLESCRIPT'
+          display dialog "Direct LaunchServices diagnostic" with title "CIO Native Diagnostic" buttons {"OK"} default button "OK"
+          APPLESCRIPT
+          rm -f "$STATE/dialog-request.applescript.result"
+          cat > "$STATE/click-dialog.applescript" <<APPLESCRIPT
+          tell application "System Events"
+            if exists process "ConnectorRunner" then
+              tell process "ConnectorRunner"
+                repeat with w in (every window)
+                  if name of w is "CIO Native Diagnostic" then
+                    set frontmost to true
+                    delay 1
+                    do shell script "/usr/sbin/screencapture -x " & quoted form of "$STATE/direct-dialog.png"
+                    if exists button "OK" of w then
+                      click button "OK" of w
+                    else
+                      keystroke return
+                    end if
+                    return true
+                  end if
+                end repeat
+              end tell
+            end if
+            return false
+          end tell
+          APPLESCRIPT
+          open -W -n "$TARGET/ConnectorRunner.app" > "$STATE/direct-open.log" 2>&1 &
+          OPEN_PID=$!
+          clicked=0
+          for attempt in {1..30}; do
+            answer="$(osascript "$STATE/click-dialog.applescript" 2>&1 || true)"
+            echo "ATTEMPT=$attempt ANSWER=$answer"
+            if [ "$answer" = "true" ]; then clicked=1; break; fi
+            if ! kill -0 "$OPEN_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          ps aux | grep -E 'ConnectorRunner|open -W' | grep -v grep > "$STATE/direct-processes.log" || true
+          screencapture -x "$STATE/direct-final.png" || true
+          if [ "$clicked" -ne 1 ]; then pkill -x ConnectorRunner || true; fi
+          wait "$OPEN_PID" || true
+          cat "$STATE/direct-open.log" || true
+          cat "$STATE/dialog-request.applescript.result" || true
+          test "$clicked" -eq 1
+          grep -q 'OK' "$STATE/dialog-request.applescript.result"
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intel-dialog-${{ matrix.os }}
+          path: |
+            ${{ github.workspace }}/artifacts/
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/direct-*.log
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/direct-*.png
+            /Users/runner/Library/Application Support/ConsultingIntelligenceOS/connector-state/launchagent*.log
+          if-no-files-found: warn
