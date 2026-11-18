@@ -67,7 +67,7 @@ end tell
 async function chooseProjectFolder() {
   async function clickNativeButton(name) {
     let lastError;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
@@ -94,6 +94,7 @@ end tell
       } catch (error) { lastError = error; }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
+    console.log('MACOS_NATIVE_BUTTON_ERROR', name, String(lastError), lastError?.stdout, lastError?.stderr);
     throw lastError ?? new Error(`Cannot locate native button ${name}`);
   }
   await clickNativeButton('New Folder');
