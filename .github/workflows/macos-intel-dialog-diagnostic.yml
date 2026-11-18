@@ -24,7 +24,7 @@ jobs:
           on run
             set resultPath to (POSIX path of (path to home folder)) & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript.result"
             try
-              set resultValue to display dialog "工作台请求连接本机。\n\n配对校验码：123456\n请求账号：体验用户\n\n请核对工作台上的校验码一致后再确认。" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接" with icon caution
+              set resultValue to display dialog "工作台请求连接本机。\n\n配对校验码：123456\n请求账号：体验用户\n\n请核对工作台上的校验码一致后再确认。" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接"
               set resultText to button returned of resultValue
             on error errMsg number errNum
               set resultText to "ERROR:" & errNum & ":" & errMsg
