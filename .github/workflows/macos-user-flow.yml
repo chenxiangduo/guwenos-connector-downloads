@@ -9,12 +9,12 @@ jobs:
         include:
           - os: macos-26
             arch: arm64
-            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.14.zip
-            sha256: 41d302dac98280ab24e1106b4070ebbb0a2d42d1fe12039ef1006e62a4c1c3d6
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.15.zip
+            sha256: bee23002525d2c38576b5721bcb51be4a9d5d78a4191464a7f25f32e6d3f9458
           - os: macos-26-intel
             arch: x86_64
-            package: Consulting-Intelligence-Connector-macOS-x64-1.0.14.zip
-            sha256: 58daef1e1d5c7a2045adaa9c20a746244c86db619495afc57c32202f774cd473
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.15.zip
+            sha256: e7af9045b3af9fb01651b27ade65e435a819add265aeb58c2b8cd8e4a9a83ff0
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
           EXPECTED_SHA256: ${{ matrix.sha256 }}
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
-          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.14/$PACKAGE"
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.15/$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
