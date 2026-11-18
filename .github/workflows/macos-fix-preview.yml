@@ -52,6 +52,11 @@ jobs:
           service.write_text(text.replace(old, new, 1))
           host = Path('connector/apps/local-connector/src/native/mac-host.mjs')
           text = host.read_text()
+          old = "spawnSync('osascript', ['-e', source]"
+          new = "spawnSync('osascript', ['-e', 'tell application \"System Events\"\\n' + source + '\\nend tell']"
+          assert old in text
+          host.write_text(text.replace(old, new, 1))
+          text = host.read_text()
           old = "  } catch (error) {\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
           new = "  } catch (error) {\n    console.error(error);\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
           assert old in text
@@ -89,14 +94,7 @@ jobs:
           control.write_text(text)
           PY
       - name: Install Connector
-        run: |
-          bash connector/installer/install-connector-macos.sh connector
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
-            plutil -insert LimitLoadToSessionType -string Aqua "$PLIST"
-            launchctl unload "$PLIST"
-            launchctl load "$PLIST"
-          fi
+        run: bash connector/installer/install-connector-macos.sh connector
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
