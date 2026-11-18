@@ -21,39 +21,50 @@ async function readCookies() {
 }
 
 async function approvePairing() {
-  return execFileAsync('osascript', ['-e', `
+  const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    if exists process "osascript" then
-      tell process "osascript" to set frontmost to true
-      delay 0.5
-      keystroke return
-      exit repeat
-    end if
+    repeat with p in (every process whose name is "osascript")
+      if (count of windows of p) > 0 then
+        tell p
+          set frontmost to true
+          if exists button "确认连接" of window 1 then
+            click button "确认连接" of window 1
+            return true
+          end if
+        end tell
+      end if
+    end repeat
     delay 1
   end repeat
+  return false
 end tell
 `], { timeout: 100_000 });
+  if (result.stdout.trim() !== 'true') throw new Error(`Native pairing confirmation was not clicked: ${result.stdout} ${result.stderr}`);
+  return result;
 }
 
 async function chooseProjectFolder() {
   return execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    if exists process "osascript" then
-      tell process "osascript" to set frontmost to true
-      delay 0.5
-      keystroke "g" using {command down, shift down}
-      delay 0.5
-      keystroke "${projectDir}"
-      delay 0.5
-      keystroke return
-      delay 0.5
-      keystroke return
-      exit repeat
-    end if
+    repeat with p in (every process whose name is "osascript")
+      if (count of windows of p) > 0 then
+        tell p to set frontmost to true
+        delay 0.5
+        keystroke "g" using {command down, shift down}
+        delay 0.5
+        keystroke "${projectDir}"
+        delay 0.5
+        keystroke return
+        delay 0.5
+        keystroke return
+        return true
+      end if
+    end repeat
     delay 1
   end repeat
+  return false
 end tell
 `], { timeout: 100_000 });
 }
