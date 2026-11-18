@@ -65,7 +65,7 @@ jobs:
           transport = Path('connector/apps/local-connector/src/transport/loopback-server.mjs')
           text = transport.read_text()
           old = "      const message = statusCode >= 500 ? 'Request handler failed' : error.message;\n"
-          new = "      if (statusCode >= 500) process.stderr.write(`CONNECTOR_REQUEST_FAILURE ${error?.stack ?? error}\\n`);\n" + old
+          new = "      if (statusCode >= 500) process.stderr.write(`CONNECTOR_REQUEST_FAILURE ${error?.stack ?? error} CAUSE ${error?.cause?.stack ?? error?.cause ?? ''}\\n`);\n" + old
           assert old in text
           transport.write_text(text.replace(old, new, 1))
           text = host.read_text()
@@ -75,6 +75,12 @@ jobs:
           new = "  return { refId, secretBase64: result.stdout.trim() };\n"
           assert old in text
           host.write_text(text.replace(old, new, 1))
+          envelope = Path('connector/packages/licensing/src/signed-envelope.mjs')
+          text = envelope.read_text()
+          old = "  if (current < header.iat - clockToleranceSeconds || current >= header.exp + clockToleranceSeconds) {\n"
+          new = "  process.stderr.write(`JWS_CLOCK_DEBUG ${JSON.stringify({ current, iat: header.iat, exp: header.exp, tolerance: clockToleranceSeconds })}\\n`);\n" + old
+          assert old in text
+          envelope.write_text(text.replace(old, new, 1))
           PY
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
