@@ -98,7 +98,7 @@ end tell
         const [x, y] = result.stdout.trim().split(',').map(Number);
         if (Number.isFinite(x) && Number.isFinite(y)) {
           console.log('MACOS_NATIVE_BUTTON', name, x, y);
-          await execFileAsync('cliclick', [`c:${x},${y}`]);
+          await execFileAsync('cliclick', [`c:${Math.round(x)},${Math.round(y)}`]);
           return;
         }
       } catch (error) { lastError = error; }
