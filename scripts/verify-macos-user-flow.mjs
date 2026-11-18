@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
 const outputDir = process.env.CIO_E2E_OUTPUT ?? 'artifacts/macos-user-flow';
-const projectDir = process.env.CIO_E2E_PROJECT ?? '/tmp/cio-macos-synthetic-project';
+const projectDir = process.env.CIO_E2E_PROJECT ?? `${process.env.HOME}/Documents/cio-macos-synthetic-project`;
 
 async function readCookies() {
   const text = await readFile(process.env.CIO_COOKIE_FILE, 'utf8');
@@ -71,15 +71,15 @@ tell application "System Events"
     repeat with p in (every process)
       if (count of windows of p) > 0 then
         if name of window 1 of p is "选择授权目录" then
-          tell p to set frontmost to true
-          delay 0.5
-          keystroke "g" using {command down, shift down}
-          delay 0.5
-          keystroke "${projectDir}"
-          delay 0.5
-          keystroke return
-          delay 0.5
-          keystroke return
+          tell p
+            set frontmost to true
+            click button "New Folder" of window 1
+            delay 0.5
+            keystroke "cio-macos-synthetic-project"
+            keystroke return
+            delay 1
+            click button "Choose" of window 1
+          end tell
           return true
         end if
       end if
@@ -108,8 +108,6 @@ end tell
 
 async function main() {
   await mkdir(outputDir, { recursive: true });
-  await mkdir(projectDir, { recursive: true });
-  await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
   const shellHealth = await execFileAsync('curl', ['-sS', '-i', 'http://127.0.0.1:48121/health']).catch(error => ({ message: error.message, stdout: error.stdout, stderr: error.stderr }));
   console.log('MACOS_SHELL_HEALTH', JSON.stringify(shellHealth));
   const browser = await chromium.launch({ channel: 'chromium', headless: true, args: ['--no-proxy-server'] });
@@ -181,6 +179,7 @@ async function main() {
     await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 120_000 });
     const chooserResult = await chooser;
     if (chooserResult?.error) throw chooserResult.error;
+    await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
 
     console.log('MACOS_STAGE project activation');
     await page.locator('#activate-project-button').click();
