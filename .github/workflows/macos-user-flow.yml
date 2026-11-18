@@ -60,6 +60,12 @@ jobs:
           new = "detached: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true"
           assert old in text
           starter.write_text(text.replace(old, new, 1))
+          envelope = target / 'packages/licensing/src/signed-envelope.mjs'
+          text = envelope.read_text()
+          old = "  if (current < header.iat - clockToleranceSeconds || current >= header.exp + clockToleranceSeconds) {\n"
+          new = "  process.stderr.write(`JWS_CLOCK_DEBUG ${JSON.stringify({ current, iat: header.iat, exp: header.exp, tolerance: clockToleranceSeconds })}\\n`);\n" + old
+          assert old in text
+          envelope.write_text(text.replace(old, new, 1))
           PY
           launchctl load "$PLIST"
       - name: Diagnose Connector process and listener

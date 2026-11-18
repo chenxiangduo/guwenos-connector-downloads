@@ -86,7 +86,7 @@ async function main() {
     await page.waitForURL(url => url.pathname === '/');
     const sessionDebug = await page.evaluate(async () => {
       const response = await fetch('/api/v1/me');
-      return { status: response.status, body: await response.text(), cookies: document.cookie };
+      return { status: response.status, body: await response.text(), cookies: document.cookie, serverDate: response.headers.get('date'), browserNow: new Date().toISOString() };
     });
     console.log('MACOS_SESSION_DEBUG', JSON.stringify(sessionDebug));
     console.log('MACOS_STAGE browser health probe');
