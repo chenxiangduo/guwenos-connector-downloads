@@ -55,11 +55,11 @@ jobs:
           start = text.index('function runOsascript(source) {')
           end = text.index('\n}\n\nfunction canonicalRoot', start) + 3
           replacement = '''function runOsascript(source) {
-            const sourcePath = '/tmp/cio-dialog-' + process.pid + '-' + Date.now() + '.applescript';
+            const sourcePath = join(parseStateDir(process.argv.slice(2)), 'dialog-request.applescript');
             const resultPath = sourcePath + '.result';
             writeFileSync(sourcePath, source, 'utf8');
             const app = join(dirname(fileURLToPath(import.meta.url)), '../../../../ConnectorRunner.app');
-            const result = spawnSync('open', ['-W', '-n', app, '--args', sourcePath, resultPath], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });
+            const result = spawnSync('open', ['-W', '-n', app], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });
             if (result.error) throw Object.assign(new Error('无法启动系统对话框'), { code: 'NATIVE_UNAVAILABLE' });
             try { result.stdout = readFileSync(resultPath, 'utf8'); }
             catch { if (result.status === 0) result.status = 1; }
@@ -104,9 +104,10 @@ jobs:
           control.write_text(text)
           PY
           cat > connector/installer/dialog-runner.applescript <<'APPLET'
-          on run argv
-            set sourcePath to item 1 of argv
-            set resultPath to item 2 of argv
+          on run
+            set homePath to POSIX path of (path to home folder)
+            set sourcePath to homePath & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript"
+            set resultPath to sourcePath & ".result"
             set sourceText to read POSIX file sourcePath as text
             set resultValue to run script sourceText
             set resultText to resultValue as text
