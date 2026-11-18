@@ -25,8 +25,9 @@ async function approvePairing() {
   const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    if exists process "ConnectorRunner" then
-      tell process "ConnectorRunner"
+    repeat with p in (every process)
+      try
+        tell p
         repeat with w in (every window)
           if name of w is "顾问 OS · 本机连接确认" then
             set frontmost to true
@@ -37,17 +38,18 @@ tell application "System Events"
             else
               keystroke return
             end if
-            return true
+            return "true:" & (name of p)
           end if
         end repeat
-      end tell
-    end if
+        end tell
+      end try
+    end repeat
     delay 1
   end repeat
   return false
 end tell
 `], { timeout: 100_000 });
-  if (result.stdout.trim() !== 'true') throw new Error(`Native pairing confirmation was not clicked: ${result.stdout} ${result.stderr}`);
+  if (result.stdout.trim() !== 'true' && !result.stdout.trim().startsWith('true:')) throw new Error(`Native pairing confirmation was not clicked: ${result.stdout} ${result.stderr}`);
   return result;
 }
 
@@ -74,8 +76,9 @@ async function chooseProjectFolder() {
       try {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  if exists process "ConnectorRunner" then
-    tell process "ConnectorRunner"
+  repeat with p in (every process)
+    try
+      tell p
       repeat with w in (every UI element)
         if name of w is "Choose a Folder" then
           set frontmost to true
@@ -94,8 +97,9 @@ tell application "System Events"
         return (x as text) & "," & (y as text)
         end if
       end repeat
-    end tell
-  end if
+      end tell
+    end try
+  end repeat
 end tell
 `]);
         const [x, y] = result.stdout.trim().split(',').map(Number);
@@ -123,11 +127,13 @@ async function captureNativeFolder() {
   await execFileAsync('screencapture', ['-x', `${outputDir}/native-folder.png`]).catch(error => ({ error }));
   const ui = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  if exists process "ConnectorRunner" then
-    tell process "ConnectorRunner"
-      return {name of every UI element, name of every window}
-    end tell
-  end if
+  set inventory to {}
+  repeat with p in (every process)
+    try
+      if (count of windows of p) > 0 then set end of inventory to {name of p, name of every window of p}
+    end try
+  end repeat
+  return inventory
 end tell
 `]).catch(error => ({ error: String(error), stdout: error.stdout, stderr: error.stderr }));
   console.log('MACOS_NATIVE_FOLDER_UI', JSON.stringify(ui));
