@@ -34,14 +34,18 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Test an Aqua session with SessionCreate on macOS 26 Intel
+      - name: Test System Events mediated dialog launch on macOS 26 Intel
         if: matrix.arch == 'x86_64'
         run: |
-          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
-          plutil -insert LimitLoadToSessionType -string Aqua "$PLIST"
-          plutil -insert SessionCreate -bool YES "$PLIST"
-          launchctl unload "$PLIST"
-          launchctl load "$PLIST"
+          python3 - <<'PY'
+          from pathlib import Path
+          host = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11/apps/local-connector/src/native/mac-host.mjs'
+          text = host.read_text()
+          old = "const result = spawnSync('open', ['-W', '-n', app], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });"
+          new = "const result = spawnSync('osascript', ['-e', `tell application \"System Events\" to do shell script \"/usr/bin/open -W -n \" & quoted form of \"${app}\"`], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });"
+          assert old in text
+          host.write_text(text.replace(old, new, 1))
+          PY
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
