@@ -37,8 +37,6 @@ jobs:
               请求账号：体验用户
 
               请核对工作台上的校验码一致后再确认。
-            title: 本机连接确认
-            body: 配对校验码：123456
             buttons: '{"拒绝", "确认连接"}'
             button: 确认连接
     runs-on: macos-26-intel
