@@ -62,6 +62,12 @@ jobs:
           new = "detached: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true"
           assert old in text
           starter.write_text(text.replace(old, new, 1))
+          transport = Path('connector/apps/local-connector/src/transport/loopback-server.mjs')
+          text = transport.read_text()
+          old = "      const message = statusCode >= 500 ? 'Request handler failed' : error.message;\n"
+          new = "      if (statusCode >= 500) process.stderr.write(`CONNECTOR_REQUEST_FAILURE ${error?.stack ?? error}\\n`);\n" + old
+          assert old in text
+          transport.write_text(text.replace(old, new, 1))
           PY
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
