@@ -24,15 +24,17 @@ async function readCookies() {
 async function approvePairing() {
   const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  repeat 90
-    repeat with p in (every process)
+  repeat 280
+    repeat with p in (every application process whose name is "ConnectorRunner" or name is "applet")
       try
         tell p
         repeat with w in (every window)
           if name of w is "顾问 OS · 本机连接确认" then
             set frontmost to true
             delay 1
-            do shell script "/usr/sbin/screencapture -x " & quoted form of "${outputDir}/native-pairing.png"
+            try
+              do shell script "/usr/sbin/screencapture -x " & quoted form of "${outputDir}/native-pairing.png"
+            end try
             if exists button "确认连接" of w then
               click button "确认连接" of w
             else
@@ -48,17 +50,17 @@ tell application "System Events"
   end repeat
   return false
 end tell
-`], { timeout: 100_000 });
+`], { timeout: 295_000 });
   if (result.stdout.trim() !== 'true' && !result.stdout.trim().startsWith('true:')) throw new Error(`Native pairing confirmation was not clicked: ${result.stdout} ${result.stderr}`);
   return result;
 }
 
 async function captureNativePairing() {
-  await execFileAsync('screencapture', ['-x', `${outputDir}/native-pairing.png`]).catch(error => ({ error }));
+  await execFileAsync('screencapture', ['-x', `${outputDir}/pairing-overview.png`]).catch(error => ({ error }));
   const ui = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   set inventory to {}
-  repeat with p in (every process)
+  repeat with p in (every application process whose name is "ConnectorRunner" or name is "applet")
     try
       if (count of windows of p) > 0 then set end of inventory to {name of p, name of every window of p}
     end try
@@ -76,7 +78,7 @@ async function chooseProjectFolder() {
       try {
         const result = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
-  repeat with p in (every process)
+  repeat with p in (every application process whose name is "ConnectorRunner" or name is "applet")
     try
       tell p
       repeat with w in (every UI element)
@@ -101,7 +103,7 @@ tell application "System Events"
     end try
   end repeat
 end tell
-`]);
+`], { timeout: 5000 });
         const [x, y] = result.stdout.trim().split(',').map(Number);
         if (Number.isFinite(x) && Number.isFinite(y)) {
           console.log('MACOS_NATIVE_BUTTON', name, x, y);
@@ -128,7 +130,7 @@ async function captureNativeFolder() {
   const ui = await execFileAsync('osascript', ['-e', `
 tell application "System Events"
   set inventory to {}
-  repeat with p in (every process)
+  repeat with p in (every application process whose name is "ConnectorRunner" or name is "applet")
     try
       if (count of windows of p) > 0 then set end of inventory to {name of p, name of every window of p}
     end try
@@ -166,8 +168,8 @@ async function main() {
   page.on('response', async response => {
     if (!response.url().startsWith('http://127.0.0.1:')) return;
     if (response.status() < 400 && !response.url().includes('/v1/pairings')) return;
-    const body = await response.text().catch(error => `<unavailable: ${error}>`);
-    console.log('MACOS_LOCAL_RESPONSE', response.request().method(), response.url(), response.status(), body);
+    const body = await response.json().catch(() => ({}));
+    console.log('MACOS_LOCAL_RESPONSE', response.request().method(), new URL(response.url()).pathname, response.status(), body.status ?? body.code ?? '');
   });
   try {
     await page.goto('https://guwenos.cn/login/', { waitUntil: 'domcontentloaded' });
@@ -175,7 +177,7 @@ async function main() {
     await page.waitForURL(url => url.pathname === '/');
     const sessionDebug = await page.evaluate(async () => {
       const response = await fetch('/api/v1/me');
-      return { status: response.status, body: await response.text(), cookies: document.cookie, serverDate: response.headers.get('date'), browserNow: new Date().toISOString() };
+      return { status: response.status, serverDate: response.headers.get('date'), browserNow: new Date().toISOString() };
     });
     console.log('MACOS_SESSION_DEBUG', JSON.stringify(sessionDebug));
     console.log('MACOS_STAGE browser health probe');
@@ -200,7 +202,7 @@ async function main() {
       step: document.getElementById('connector-step')?.textContent,
       message: document.getElementById('connector-message-text')?.textContent,
     }))));
-    await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 120_000 });
+    await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 300_000 });
     const approvalResult = await approval;
     if (approvalResult?.error) throw approvalResult.error;
 
