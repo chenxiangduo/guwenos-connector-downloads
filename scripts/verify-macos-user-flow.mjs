@@ -64,12 +64,13 @@ async function main() {
   await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  await context.addCookies(await readCookies());
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   try {
-    await page.goto('https://guwenos.cn/', { waitUntil: 'domcontentloaded' });
+    await page.goto('https://guwenos.cn/login/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#demo-submit').click();
+    await page.waitForURL(url => url.pathname === '/');
     const sessionDebug = await page.evaluate(async () => {
       const response = await fetch('/api/v1/me');
       return { status: response.status, body: await response.text(), cookies: document.cookie };
