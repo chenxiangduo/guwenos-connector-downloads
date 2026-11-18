@@ -38,6 +38,21 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
+      - name: Test native folder presentation without explicit activation
+        if: matrix.arch == 'x86_64'
+        run: |
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.13"
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.13'
+          source = target / 'installer/dialog-runner.applescript'
+          text = source.read_text()
+          assert '    activate\n' in text
+          source.write_text(text.replace('    activate\n', '', 1))
+          PY
+          pkill -f 'ConnectorRunner.app' || true
+          osacompile -o "$TARGET/ConnectorRunner.app" -s "$TARGET/installer/dialog-runner.applescript"
+          open -n "$TARGET/ConnectorRunner.app"
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
