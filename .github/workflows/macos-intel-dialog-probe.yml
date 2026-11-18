@@ -1,0 +1,80 @@
+name: Intel dialog launch probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-26-intel
+    timeout-minutes: 5
+    steps:
+      - name: Compare AppleScript document events with native AppKit launch
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers
+          printf 'console-user=%s job-user=%s\n' "$(stat -f '%Su' /dev/console)" "$(id -un)"
+          /bin/launchctl print "gui/$(id -u)" >/dev/null && echo GRAPHICAL_DOMAIN_OK
+          mkdir -p artifacts
+          probe=$(mktemp -d "$RUNNER_TEMP/cio-dialog-probe.XXXXXX")
+          export PROBE="$probe"
+          cat > "$probe/control.applescript" <<'AS'
+          on run
+            my mark("APPLET_RUN")
+          end run
+          on open docs
+            my mark("APPLET_OPEN")
+          end open
+          on mark(eventName)
+            do shell script "/bin/echo " & quoted form of eventName & " >> " & quoted form of "/tmp/cio-applet-probe.log"
+          end mark
+          AS
+          osacompile -s -o "$probe/Control.app" "$probe/control.applescript"
+          printf 'synthetic request\n' > "$probe/request.txt"
+          /usr/bin/open -a "$probe/Control.app" "$probe/request.txt"
+          for i in {1..12}; do
+            if [ -s /tmp/cio-applet-probe.log ]; then break; fi
+            sleep 1
+          done
+          cat /tmp/cio-applet-probe.log 2>/dev/null || echo APPLET_NO_EVENT
+          cat > "$probe/panel.swift" <<'SWIFT'
+          import AppKit
+          let app = NSApplication.shared
+          app.setActivationPolicy(.regular)
+          let alert = NSAlert()
+          alert.messageText = "Connector diagnostic only"
+          alert.informativeText = "Synthetic window. No pairing ticket or project permissions."
+          alert.addButton(withTitle: "Close")
+          app.activate(ignoringOtherApps: true)
+          print("APPKIT_WINDOW_START")
+          fflush(stdout)
+          let closeTimer = Timer(timeInterval: 5, repeats: false) { _ in
+              app.stopModal(withCode: .abort)
+              alert.window.orderOut(nil)
+          }
+          RunLoop.main.add(closeTimer, forMode: .modalPanel)
+          alert.runModal()
+          print("APPKIT_WINDOW_RETURNED")
+          SWIFT
+          swiftc -o "$probe/panel" "$probe/panel.swift"
+          /usr/bin/python3 - "$probe/panel" <<'PY'
+          import pathlib, subprocess, sys, time
+          started = time.monotonic()
+          with open('artifacts/appkit.log', 'w') as out:
+              proc = subprocess.Popen([sys.argv[1]], stdout=out, stderr=subprocess.STDOUT)
+              try:
+                  time.sleep(2)
+                  subprocess.run(['/usr/sbin/screencapture', '-x', 'artifacts/appkit.png'], timeout=15, check=False)
+                  proc.wait(timeout=15)
+              except subprocess.TimeoutExpired:
+                  proc.kill()
+                  proc.wait()
+                  print("APPKIT_TIMEOUT")
+          print(pathlib.Path('artifacts/appkit.log').read_text())
+          print(f"APPKIT_PROBE_DURATION={time.monotonic() - started:.1f}")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-dialog-launch-probe
+          path: artifacts/
