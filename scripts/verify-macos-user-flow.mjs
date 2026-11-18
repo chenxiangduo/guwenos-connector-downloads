@@ -30,6 +30,7 @@ tell application "System Events"
         repeat with w in (every window)
           if name of w is "顾问 OS · 本机连接确认" then
             set frontmost to true
+            delay 1
             do shell script "/usr/sbin/screencapture -x " & quoted form of "${outputDir}/native-pairing.png"
             if exists button "确认连接" of w then
               click button "确认连接" of w
