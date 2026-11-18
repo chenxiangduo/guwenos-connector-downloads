@@ -7,10 +7,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: macos-26
+            arch: arm64
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.12.zip
+            sha256: 667af8676f0aa942f4b979e45c2e828eeb7d9f807d69cf6d7ff44f4d9c2ed60d
           - os: macos-26-intel
             arch: x86_64
-            package: Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip
-            sha256: 0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.12.zip
+            sha256: a379703badd159acdb86cd0db9a514578e844f5801f9b0f58d109a9e4c0c5fbd
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,23 +33,11 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
-          curl -fsSL -b cookies.txt -o "$PACKAGE" "https://guwenos.cn/downloads/connector/$PACKAGE"
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.12/$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Test concise pairing text on macOS 26 Intel
-        if: matrix.arch == 'x86_64'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          host = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11/apps/local-connector/src/native/mac-host.mjs'
-          text = host.read_text()
-          start = text.index('const script = `display dialog "工作台请求连接本机。')
-          end = text.index('`;', start) + 2
-          replacement = 'const script = `display dialog "配对校验码：${escapeAppleScript(shortCode)}" with title "顾问 OS · 本机连接确认" buttons {"拒绝", "确认连接"} default button "确认连接"`;'
-          host.write_text(text[:start] + replacement + text[end:])
-          PY
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
