@@ -68,18 +68,20 @@ async function chooseProjectFolder() {
   return execFileAsync('osascript', ['-e', `
 tell application "System Events"
   repeat 90
-    repeat with p in (every process whose name is "osascript")
+    repeat with p in (every process)
       if (count of windows of p) > 0 then
-        tell p to set frontmost to true
-        delay 0.5
-        keystroke "g" using {command down, shift down}
-        delay 0.5
-        keystroke "${projectDir}"
-        delay 0.5
-        keystroke return
-        delay 0.5
-        keystroke return
-        return true
+        if name of window 1 of p is "选择授权目录" then
+          tell p to set frontmost to true
+          delay 0.5
+          keystroke "g" using {command down, shift down}
+          delay 0.5
+          keystroke "${projectDir}"
+          delay 0.5
+          keystroke return
+          delay 0.5
+          keystroke return
+          return true
+        end if
       end if
     end repeat
     delay 1
