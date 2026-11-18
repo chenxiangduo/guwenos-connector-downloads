@@ -108,12 +108,12 @@ jobs:
             set homePath to POSIX path of (path to home folder)
             set sourcePath to homePath & "Library/Application Support/ConsultingIntelligenceOS/connector-state/dialog-request.applescript"
             set resultPath to sourcePath & ".result"
-            set sourceText to read POSIX file sourcePath as text
+            set sourceText to read POSIX file sourcePath as «class utf8»
             set resultValue to run script sourceText
             set resultText to resultValue as text
             set outputFile to open for access POSIX file resultPath with write permission
             set eof outputFile to 0
-            write resultText to outputFile as text
+            write resultText to outputFile as «class utf8»
             close access outputFile
           end run
           APPLET
