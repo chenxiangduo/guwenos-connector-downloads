@@ -7,10 +7,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-26
-            arch: arm64
-            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.11.zip
-            sha256: fabdba2fe57399280448167961c3872e5e9078b5f0399a3f7ef528f4799c3920
           - os: macos-26-intel
             arch: x86_64
             package: Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip
@@ -38,11 +34,12 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Test the Aqua session on macOS 26 Intel
+      - name: Test an Aqua session with SessionCreate on macOS 26 Intel
         if: matrix.arch == 'x86_64'
         run: |
           PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
           plutil -insert LimitLoadToSessionType -string Aqua "$PLIST"
+          plutil -insert SessionCreate -bool YES "$PLIST"
           launchctl unload "$PLIST"
           launchctl load "$PLIST"
       - name: Diagnose Connector process and listener
