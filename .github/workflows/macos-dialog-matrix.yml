@@ -7,22 +7,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - case: english-one
-            title: CIO Native Diagnostic
-            body: Direct dialog test
-            buttons: '{"OK"}'
-            button: OK
-          - case: english-two
-            title: CIO Native Diagnostic
-            body: Direct dialog test
-            buttons: '{"Cancel", "Connect"}'
-            button: Connect
-          - case: chinese-one
-            title: 本机连接确认
+          - case: full-title-short-body
+            title: 顾问 OS · 本机连接确认
             body: 配对校验码：123456
-            buttons: '{"确认连接"}'
+            buttons: '{"拒绝", "确认连接"}'
             button: 确认连接
-          - case: chinese-two
+          - case: short-title-long-singleline
+            title: 本机连接确认
+            body: 工作台请求连接本机。配对校验码：123456 请求账号：体验用户 请核对工作台上的校验码一致后再确认。
+            buttons: '{"拒绝", "确认连接"}'
+            button: 确认连接
+          - case: short-title-multiline
+            title: 本机连接确认
+            body: |-
+              工作台请求连接本机。
+
+              配对校验码：123456
+              请求账号：体验用户
+
+              请核对工作台上的校验码一致后再确认。
+            buttons: '{"拒绝", "确认连接"}'
+            button: 确认连接
+          - case: exact-pairing
+            title: 顾问 OS · 本机连接确认
+            body: |-
+              工作台请求连接本机。
+
+              配对校验码：123456
+              请求账号：体验用户
+
+              请核对工作台上的校验码一致后再确认。
             title: 本机连接确认
             body: 配对校验码：123456
             buttons: '{"拒绝", "确认连接"}'
