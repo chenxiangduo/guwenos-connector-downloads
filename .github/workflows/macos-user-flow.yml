@@ -26,13 +26,12 @@ jobs:
           npm install --no-save playwright@1.63.0
           npx playwright install chromium
           which cliclick || brew install cliclick
-      - name: Create synthetic experience account and download Connector
+      - name: Download candidate Connector
         env:
           PACKAGE: ${{ matrix.package }}
           EXPECTED_SHA256: ${{ matrix.sha256 }}
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
-          curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
           curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.14/$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
@@ -54,7 +53,6 @@ jobs:
       - name: Verify complete user flow
         timeout-minutes: 10
         env:
-          CIO_COOKIE_FILE: cookies.txt
           CIO_E2E_OUTPUT: artifacts/macos-user-flow
         run: node scripts/verify-macos-user-flow.mjs
       - name: Collect Connector logs
