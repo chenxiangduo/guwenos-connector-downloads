@@ -56,11 +56,13 @@ jobs:
           rm -f "$STATE/dialog-request.applescript.result"
           cat > "$STATE/click-dialog.applescript" <<APPLESCRIPT
           tell application "System Events"
+            set inventory to {}
             repeat with p in (every process)
               try
                 tell p
+                if (count of windows) > 0 then set end of inventory to {name of p, name of every window}
                 repeat with w in (every window)
-                  if name of w is "顾问 OS · 本机连接确认" then
+                  if name of w contains "本机连接确认" then
                     set frontmost to true
                     delay 1
                     do shell script "/usr/sbin/screencapture -x " & quoted form of "$STATE/direct-dialog.png"
@@ -75,17 +77,19 @@ jobs:
                 end tell
               end try
             end repeat
-            return false
+            return inventory
           end tell
           APPLESCRIPT
           open -W -n "$TARGET/ConnectorRunner.app" > "$STATE/direct-open.log" 2>&1 &
           OPEN_PID=$!
           clicked=0
-          for attempt in {1..30}; do
+          for attempt in {1..8}; do
             answer="$(osascript "$STATE/click-dialog.applescript" 2>&1 || true)"
             echo "ATTEMPT=$attempt ANSWER=$answer"
             case "$answer" in true:*) clicked=1; break;; esac
+            if [ -f "$STATE/dialog-request.applescript.result" ]; then break; fi
             if ! kill -0 "$OPEN_PID" 2>/dev/null; then break; fi
+            screencapture -x "$STATE/direct-attempt-$attempt.png" || true
             sleep 1
           done
           ps aux | grep -E 'ConnectorRunner|open -W' | grep -v grep > "$STATE/direct-processes.log" || true
