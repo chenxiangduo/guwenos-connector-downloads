@@ -1,0 +1,89 @@
+name: Trace Intel native dialog delivery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: macos-26-intel
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+      - name: Prepare browser and install the checked candidate
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.63.0
+          npx playwright install chromium
+          which cliclick || brew install cliclick
+          package=Consulting-Intelligence-Connector-macOS-x64-1.0.15.zip
+          curl --max-time 120 -fsSL -o "$package" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-candidate-1.0.15/$package"
+          echo "e7af9045b3af9fb01651b27ade65e435a819add265aeb58c2b8cd8e4a9a83ff0  $package" | shasum -a 256 -c -
+          unzip -q "$package"
+          bash connector/Install.command
+      - name: Trace test helper and observe a standalone native request
+        run: |
+          set -euo pipefail
+          root="$HOME/Library/Application Support/ConsultingIntelligenceOS"
+          target="$root/Connector/1.0.15"
+          state="$root/connector-state"
+          mkdir -p artifacts
+          python3 - "$target/installer/dialog-runner.applescript" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]).read_text()
+          replacements = [
+              ('on run\n', 'on run\n  my trace("run")\n'),
+              ('on open requestFiles\n', 'on open requestFiles\n  my trace("open-event")\n'),
+              ('  try\n    set requestText', '  my trace("path-accepted")\n  try\n    set requestText'),
+              ('    activate\n', '    my trace("activate-start")\n    activate\n    my trace("activate-end")\n'),
+              ('      set resultValue to display dialog "配对校验码："', '      my trace("pairing-window")\n      set resultValue to display dialog "配对校验码："'),
+              ('      set resultValue to choose folder', '      my trace("folder-window")\n      set resultValue to choose folder'),
+              ('  my writeDialogResult(', '  my trace("returning-result")\n  my writeDialogResult('),
+          ]
+          for old, new in replacements:
+              assert old in source
+              source = source.replace(old, new, 1)
+          source += '''
+          on trace(stageName)
+            set stateDir to (POSIX path of (path to home folder)) & "Library/Application Support/ConsultingIntelligenceOS/connector-state/"
+            set f to open for access POSIX file (stateDir & "diagnostic-trace.log") with write permission
+            write (stageName & tab & ((current date) as text) & linefeed) to f starting at eof as «class utf8»
+            close access f
+          end trace
+          '''
+          Path('trace.applescript').write_text(source)
+          PY
+          osacompile -s -o "$target/ConnectorRunner.app" trace.applescript
+          req_dir="$(mktemp -d "$state/native-dialog-XXXXXX")"
+          date -u '+STANDALONE_REQUEST %FT%TZ'
+          printf 'approve-pairing\n192837\n' > "$req_dir/request.txt"
+          open -a "$target/ConnectorRunner.app" "$req_dir/request.txt"
+          for n in {1..10}; do
+            if grep -q 'pairing-window' "$state/diagnostic-trace.log" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          screencapture -x artifacts/standalone.png || true
+          pgrep -f "$target/ConnectorRunner.app/Contents/MacOS/applet" | while read -r pid; do kill "$pid"; done || true
+          cat "$state/diagnostic-trace.log" || true
+      - name: Verify normal browser and Connector flow with tracing enabled
+        timeout-minutes: 7
+        env:
+          CIO_E2E_OUTPUT: artifacts/macos-user-flow
+        run: node scripts/verify-macos-user-flow.mjs
+      - name: Collect trace
+        if: always()
+        run: |
+          mkdir -p artifacts
+          state="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          if [ -f "$state/diagnostic-trace.log" ]; then
+            cat "$state/diagnostic-trace.log"
+            cp "$state/diagnostic-trace.log" artifacts/
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-intel-direct-delivery
+          path: artifacts/
