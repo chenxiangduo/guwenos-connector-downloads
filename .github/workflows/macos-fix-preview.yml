@@ -52,10 +52,20 @@ jobs:
           service.write_text(text.replace(old, new, 1))
           host = Path('connector/apps/local-connector/src/native/mac-host.mjs')
           text = host.read_text()
-          old = "spawnSync('osascript', ['-e', source]"
-          new = "spawnSync('osascript', ['-e', 'tell application \"System Events\"\\n' + source + '\\nend tell']"
-          assert old in text
-          host.write_text(text.replace(old, new, 1))
+          start = text.index('function runOsascript(source) {')
+          end = text.index('\n}\n\nfunction canonicalRoot', start) + 3
+          replacement = '''function runOsascript(source) {
+  const sourcePath = '/tmp/cio-dialog-' + process.pid + '-' + Date.now() + '.applescript';
+  const resultPath = sourcePath + '.result';
+  writeFileSync(sourcePath, source, 'utf8');
+  const app = join(dirname(fileURLToPath(import.meta.url)), '../../../../ConnectorRunner.app');
+  const result = spawnSync('open', ['-W', '-n', app, '--args', sourcePath, resultPath], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });
+  if (result.error) throw Object.assign(new Error('无法启动系统对话框'), { code: 'NATIVE_UNAVAILABLE' });
+  try { result.stdout = readFileSync(resultPath, 'utf8'); }
+  catch { if (result.status === 0) result.status = 1; }
+  return result;
+}'''
+          host.write_text(text[:start] + replacement + text[end:])
           text = host.read_text()
           old = "  } catch (error) {\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
           new = "  } catch (error) {\n    console.error(error);\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
@@ -93,6 +103,20 @@ jobs:
           assert text.count('clockToleranceSeconds: 30') == 4
           control.write_text(text)
           PY
+          cat > connector/installer/dialog-runner.applescript <<'APPLET'
+          on run argv
+            set sourcePath to item 1 of argv
+            set resultPath to item 2 of argv
+            set sourceText to read POSIX file sourcePath as text
+            set resultValue to run script sourceText
+            set resultText to resultValue as text
+            set outputFile to open for access POSIX file resultPath with write permission
+            set eof outputFile to 0
+            write resultText to outputFile as text
+            close access outputFile
+          end run
+          APPLET
+          osacompile -o connector/ConnectorRunner.app connector/installer/dialog-runner.applescript
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
       - name: Diagnose Connector process and listener
