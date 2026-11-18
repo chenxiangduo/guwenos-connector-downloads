@@ -55,16 +55,16 @@ jobs:
           start = text.index('function runOsascript(source) {')
           end = text.index('\n}\n\nfunction canonicalRoot', start) + 3
           replacement = '''function runOsascript(source) {
-  const sourcePath = '/tmp/cio-dialog-' + process.pid + '-' + Date.now() + '.applescript';
-  const resultPath = sourcePath + '.result';
-  writeFileSync(sourcePath, source, 'utf8');
-  const app = join(dirname(fileURLToPath(import.meta.url)), '../../../../ConnectorRunner.app');
-  const result = spawnSync('open', ['-W', '-n', app, '--args', sourcePath, resultPath], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });
-  if (result.error) throw Object.assign(new Error('无法启动系统对话框'), { code: 'NATIVE_UNAVAILABLE' });
-  try { result.stdout = readFileSync(resultPath, 'utf8'); }
-  catch { if (result.status === 0) result.status = 1; }
-  return result;
-}'''
+            const sourcePath = '/tmp/cio-dialog-' + process.pid + '-' + Date.now() + '.applescript';
+            const resultPath = sourcePath + '.result';
+            writeFileSync(sourcePath, source, 'utf8');
+            const app = join(dirname(fileURLToPath(import.meta.url)), '../../../../ConnectorRunner.app');
+            const result = spawnSync('open', ['-W', '-n', app, '--args', sourcePath, resultPath], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });
+            if (result.error) throw Object.assign(new Error('无法启动系统对话框'), { code: 'NATIVE_UNAVAILABLE' });
+            try { result.stdout = readFileSync(resultPath, 'utf8'); }
+            catch { if (result.status === 0) result.status = 1; }
+            return result;
+          }'''
           host.write_text(text[:start] + replacement + text[end:])
           text = host.read_text()
           old = "  } catch (error) {\n    const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';\n"
