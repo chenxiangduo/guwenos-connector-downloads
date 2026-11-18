@@ -25,6 +25,7 @@ jobs:
         run: |
           npm install --no-save playwright@1.63.0
           npx playwright install chromium
+          which cliclick || brew install cliclick
       - name: Create synthetic experience account and download Connector
         env:
           PACKAGE: ${{ matrix.package }}
