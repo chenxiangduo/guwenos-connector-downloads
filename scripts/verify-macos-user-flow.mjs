@@ -84,6 +84,7 @@ end tell
 `]);
     const [x, y] = result.stdout.trim().split(',').map(Number);
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`Cannot locate native button ${name}: ${result.stdout}`);
+    console.log('MACOS_NATIVE_BUTTON', name, x, y);
     await execFileAsync('cliclick', [`c:${x},${y}`]);
   }
   await new Promise(resolve => setTimeout(resolve, 3000));
@@ -93,6 +94,7 @@ end tell
   await execFileAsync('cliclick', ['kp:return']);
   await new Promise(resolve => setTimeout(resolve, 1000));
   await clickNativeButton('Choose');
+  console.log('MACOS_CHOOSER_CLICKS_DONE');
 }
 
 async function captureNativeFolder() {
@@ -180,7 +182,7 @@ async function main() {
     await page.locator('#select-project-button').click();
     await page.waitForTimeout(12_000);
     await captureNativeFolder();
-    await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 120_000 });
+    await page.locator('#current-project-name').filter({ hasText: 'cio-macos-synthetic-project' }).waitFor({ timeout: 30_000 });
     const chooserResult = await chooser;
     if (chooserResult?.error) throw chooserResult.error;
     await writeFile(`${projectDir}/合成项目说明.txt`, '这是仅用于 macOS 全流程验收的合成项目资料。\n');
