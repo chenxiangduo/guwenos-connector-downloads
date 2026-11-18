@@ -110,7 +110,11 @@ jobs:
             set resultPath to sourcePath & ".result"
             set sourceText to read POSIX file sourcePath as «class utf8»
             set resultValue to run script sourceText
-            set resultText to resultValue as text
+            if (class of resultValue) is record then
+              set resultText to button returned of resultValue
+            else
+              set resultText to resultValue as text
+            end if
             set outputFile to open for access POSIX file resultPath with write permission
             set eof outputFile to 0
             write resultText to outputFile as «class utf8»
