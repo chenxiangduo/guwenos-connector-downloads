@@ -1,0 +1,88 @@
+name: macOS Clock Fix Preview
+on:
+  workflow_dispatch:
+jobs:
+  full-user-flow:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            arch: arm64
+            package: Consulting-Intelligence-Connector-macOS-arm64-1.0.10.zip
+            sha256: 7a1b4e272eb9016e61ed5f2465768457097c5f01895b1f2058afffe8a3c29658
+          - os: macos-26-intel
+            arch: x86_64
+            package: Consulting-Intelligence-Connector-macOS-x64-1.0.10.zip
+            sha256: 30d68c798b19faef602e578a3280c32eaadfb57bc3c8d6688692e6840f82ec3c
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+      - name: Install browser
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install chromium
+      - name: Create synthetic experience account and download Connector
+        env:
+          PACKAGE: ${{ matrix.package }}
+          EXPECTED_SHA256: ${{ matrix.sha256 }}
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
+          curl -fsSL -o "$PACKAGE" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-1.0.10/$PACKAGE"
+          echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
+          unzip -q "$PACKAGE"
+      - name: Apply candidate clock-skew fix to test copy
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          main = Path('connector/apps/local-connector/src/main.mjs')
+          text = main.read_text()
+          old = '    now: clock?.() ?? new Date(),\n'
+          assert old in text
+          main.write_text(text.replace(old, old + '    clockToleranceSeconds: 30,\n', 1))
+          service = Path('connector/apps/local-connector/src/pairing/service.mjs')
+          text = service.read_text()
+          old = "    if (issuedAt !== undefined && dateValue(issuedAt, 'ticket issuedAt') > now()) throw pairingError('PAIRING_TICKET_INVALID', 'Pairing ticket is not active yet', 400);\n"
+          new = "    if (issuedAt !== undefined && dateValue(issuedAt, 'ticket issuedAt').getTime() > now().getTime() + 30_000) throw pairingError('PAIRING_TICKET_INVALID', 'Pairing ticket is not active yet', 400);\n"
+          assert old in text
+          service.write_text(text.replace(old, new, 1))
+          PY
+      - name: Install Connector
+        run: bash connector/installer/install-connector-macos.sh connector
+      - name: Diagnose Connector process and listener
+        run: |
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:48121/health; then break; fi
+            sleep 1
+          done
+          ps aux | grep -E "main.mjs|start-connector" || true
+          lsof -nP -iTCP:48121 || true
+          cat "$STATE/launchagent.log" || true
+          cat "$STATE/launchagent.err.log" || true
+          curl -sS -i -H 'Origin: https://guwenos.cn' http://127.0.0.1:48121/health
+          curl -sS -i -X OPTIONS -H 'Origin: https://guwenos.cn' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Private-Network: true' http://127.0.0.1:48121/health
+      - name: Verify complete user flow
+        timeout-minutes: 6
+        env:
+          CIO_COOKIE_FILE: cookies.txt
+          CIO_E2E_OUTPUT: artifacts/macos-user-flow
+        run: node scripts/verify-macos-user-flow.mjs
+      - name: Collect Connector logs
+        if: always()
+        run: |
+          mkdir -p artifacts/connector-logs
+          cp "$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state/"*.log artifacts/connector-logs/ 2>/dev/null || true
+          launchctl list | grep com.guwenos.connector || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-user-flow-${{ matrix.arch }}
+          path: |
+            artifacts/macos-user-flow/
+            artifacts/connector-logs/
