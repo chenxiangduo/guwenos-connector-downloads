@@ -76,6 +76,13 @@ async function main() {
       return { status: response.status, body: await response.text(), cookies: document.cookie };
     });
     console.log('MACOS_SESSION_DEBUG', JSON.stringify(sessionDebug));
+    const healthDebug = await page.evaluate(async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:48121/health');
+        return { status: response.status, body: await response.text(), allowOrigin: response.headers.get('access-control-allow-origin'), allowPrivateNetwork: response.headers.get('access-control-allow-private-network') };
+      } catch (error) { return { error: String(error) }; }
+    });
+    console.log('MACOS_HEALTH_DEBUG', JSON.stringify(healthDebug));
     await page.getByText('macOS Connector 已就绪', { exact: true }).waitFor({ timeout: 30_000 });
     await page.waitForFunction(() => !document.getElementById('mac-connect-button')?.disabled, { timeout: 30_000 });
     await page.screenshot({ path: `${outputDir}/01-download-ready.png`, fullPage: true });
