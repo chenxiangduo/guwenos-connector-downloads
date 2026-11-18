@@ -70,6 +70,11 @@ async function main() {
   page.on('pageerror', error => errors.push(error.message));
   try {
     await page.goto('https://guwenos.cn/', { waitUntil: 'domcontentloaded' });
+    const sessionDebug = await page.evaluate(async () => {
+      const response = await fetch('/api/v1/me');
+      return { status: response.status, body: await response.text(), cookies: document.cookie };
+    });
+    console.log('MACOS_SESSION_DEBUG', JSON.stringify(sessionDebug));
     await page.getByText('macOS Connector 已就绪', { exact: true }).waitFor({ timeout: 30_000 });
     await page.waitForFunction(() => !document.getElementById('mac-connect-button')?.disabled, { timeout: 30_000 });
     await page.screenshot({ path: `${outputDir}/01-download-ready.png`, fullPage: true });
