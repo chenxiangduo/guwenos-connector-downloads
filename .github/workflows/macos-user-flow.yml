@@ -34,18 +34,30 @@ jobs:
           unzip -q "$PACKAGE"
       - name: Install Connector
         run: bash connector/Install.command
-      - name: Test System Events mediated dialog launch on macOS 26 Intel
+      - name: Compare the same Connector in an interactive user session
         if: matrix.arch == 'x86_64'
         run: |
+          PLIST="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          launchctl unload "$PLIST"
+          TARGET="$HOME/Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11"
+          STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          export TARGET STATE
           python3 - <<'PY'
+          import json, os
           from pathlib import Path
-          host = Path.home() / 'Library/Application Support/ConsultingIntelligenceOS/Connector/1.0.11/apps/local-connector/src/native/mac-host.mjs'
-          text = host.read_text()
-          old = "const result = spawnSync('open', ['-W', '-n', app], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });"
-          new = "const result = spawnSync('osascript', ['-e', `tell application \"System Events\" to do shell script \"/usr/bin/open -W -n \" & quoted form of \"${app}\"`], { encoding: 'utf8', timeout: 290_000, maxBuffer: 64 * 1024 });"
-          assert old in text
-          host.write_text(text.replace(old, new, 1))
+          target = Path(os.environ['TARGET'])
+          state = Path(os.environ['STATE'])
+          config = json.loads((target / 'config/production.json').read_text())
+          config.update({
+            'installRoot': str(target),
+            'connectorVersion': '1.0.11',
+            'stateRoot': str(state),
+            'hostExe': str(target / 'apps/local-connector/host/connector-host'),
+            'nodeExecutable': str(target / 'runtime/node/bin/node'),
+          })
+          (state / 'interactive.runtime.json').write_text(json.dumps(config, indent=2) + '\n')
           PY
+          "$TARGET/runtime/node/bin/node" "$TARGET/apps/local-connector/src/main.mjs" --config "$STATE/interactive.runtime.json" > "$STATE/interactive.log" 2>&1 &
       - name: Diagnose Connector process and listener
         run: |
           STATE="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
