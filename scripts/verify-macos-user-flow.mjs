@@ -74,6 +74,12 @@ async function main() {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => console.log('MACOS_CONSOLE', message.type(), message.text()));
   page.on('requestfailed', request => console.log('MACOS_REQUEST_FAILED', request.url(), request.failure()?.errorText));
+  page.on('response', async response => {
+    if (!response.url().startsWith('http://127.0.0.1:')) return;
+    if (response.status() < 400 && !response.url().includes('/v1/pairings')) return;
+    const body = await response.text().catch(error => `<unavailable: ${error}>`);
+    console.log('MACOS_LOCAL_RESPONSE', response.request().method(), response.url(), response.status(), body);
+  });
   try {
     await page.goto('https://guwenos.cn/login/', { waitUntil: 'domcontentloaded' });
     await page.locator('#demo-submit').click();
@@ -98,6 +104,12 @@ async function main() {
     console.log('MACOS_STAGE pairing');
     const approval = approvePairing().catch(error => ({ error }));
     await page.getByRole('button', { name: '已安装，连接本机' }).click();
+    await page.waitForTimeout(3000);
+    console.log('MACOS_PAIRING_UI', JSON.stringify(await page.evaluate(() => ({
+      notice: document.getElementById('notice')?.textContent,
+      step: document.getElementById('connector-step')?.textContent,
+      message: document.getElementById('connector-message-text')?.textContent,
+    }))));
     await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 120_000 });
     const approvalResult = await approval;
     if (approvalResult?.error) throw approvalResult.error;
