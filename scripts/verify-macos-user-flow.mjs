@@ -75,8 +75,16 @@ tell application "System Events"
     repeat with w in (every UI element of p)
       if (name of p is "ConnectorRunner") and (name of w is "Choose a Folder") then
         set frontmost of p to true
-        set buttonPosition to position of button "${name}" of w
-        set buttonSize to size of button "${name}" of w
+        set allItems to entire contents of w
+        repeat with candidate in allItems
+          try
+            if (class of candidate is button) and (name of candidate is "${name}") then
+              set buttonPosition to position of candidate
+              set buttonSize to size of candidate
+              exit repeat
+            end if
+          end try
+        end repeat
         set x to (item 1 of buttonPosition) + (item 1 of buttonSize) / 2
         set y to (item 2 of buttonPosition) + (item 2 of buttonSize) / 2
         return (x as text) & "," & (y as text)
