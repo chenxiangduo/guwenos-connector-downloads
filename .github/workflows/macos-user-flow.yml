@@ -32,7 +32,7 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           curl -fsS -c cookies.txt -H 'Origin: https://guwenos.cn' -H 'Content-Type: application/json' -d '{}' https://guwenos.cn/auth/demo
-          curl -fsSL -b cookies.txt -o "$PACKAGE" "https://guwenos.cn/downloads/connector/$PACKAGE"
+          gh release download connector-macos-1.0.10 --repo chenxiangduo/guwenos-connector-downloads --pattern "$PACKAGE"
           echo "$EXPECTED_SHA256  $PACKAGE" | shasum -a 256 -c -
           unzip -q "$PACKAGE"
       - name: Install Connector
