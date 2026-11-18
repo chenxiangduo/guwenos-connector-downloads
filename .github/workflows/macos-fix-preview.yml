@@ -68,6 +68,13 @@ jobs:
           new = "      if (statusCode >= 500) process.stderr.write(`CONNECTOR_REQUEST_FAILURE ${error?.stack ?? error}\\n`);\n" + old
           assert old in text
           transport.write_text(text.replace(old, new, 1))
+          text = host.read_text()
+          text = text.replace("  const secret = Buffer.from(secretBase64, 'base64').toString('utf8');\n", '')
+          text = text.replace("'-U', '-w', secret]", "'-U', '-w', secretBase64]")
+          old = "  return { refId, secretBase64: Buffer.from(result.stdout.replace(/\\n$/u, ''), 'utf8').toString('base64') };\n"
+          new = "  return { refId, secretBase64: result.stdout.trim() };\n"
+          assert old in text
+          host.write_text(text.replace(old, new, 1))
           PY
       - name: Install Connector
         run: bash connector/installer/install-connector-macos.sh connector
