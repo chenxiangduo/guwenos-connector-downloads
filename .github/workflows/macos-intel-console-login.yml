@@ -123,14 +123,15 @@ jobs:
           )
           echo 'USER_SWITCH_MENU_OPENED'
           capture artifacts/fast-user-menu.png || true
-          /usr/bin/osascript <<'APPLESCRIPT' > artifacts/login-window-menu-accessibility.txt
+          /usr/bin/osascript <<'APPLESCRIPT' > artifacts/login-window-menu-accessibility.txt || true
           tell application "System Events" to tell process "ControlCenter"
             set summary to ""
             repeat with windowRef in windows
               set currentWindow to contents of windowRef
-              repeat with itemRef in entire contents of currentWindow
-                set itemElement to contents of itemRef
+              set candidates to (buttons of currentWindow) & (entire contents of currentWindow)
+              repeat with itemRef in candidates
                 try
+                  set itemElement to contents of itemRef
                   set roleLabel to get role of itemElement
                   set labelText to ""
                   try
@@ -159,6 +160,9 @@ jobs:
             cliclick "c:$point"
           fi
           echo 'LOGIN_WINDOW_REQUESTED'
+          /bin/sleep 2
+          stat -f '%Su' /dev/console > artifacts/console-user-after-switch-request.txt
+          /usr/sbin/ioreg -n Root -d 1 | grep 'IOConsoleUsers' > artifacts/console-session-after-switch-request.txt || true
           account_tile=$(wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 28)
           printf '%s\n' "$account_tile" > artifacts/confirmed-login-account-label.txt
           cliclick "c:$account_tile"
