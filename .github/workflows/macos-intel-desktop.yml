@@ -1,0 +1,32 @@
+name: Intel macOS 26 production desktop acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    env:
+      CIO_E2E_OUTPUT: artifacts/macos-user-flow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+      - name: Prepare a fresh graphical browser
+        run: |
+          test "$(uname -m)" = x86_64
+          sw_vers
+          test "$(stat -f '%Su' /dev/console)" = "$(id -un)"
+          launchctl print "gui/$(id -u)" >/dev/null
+          npm install --no-save playwright@1.63.0
+          npx playwright install chromium
+          which cliclick || brew install cliclick
+      - name: Run the real desktop flow against production
+        run: node scripts/verify-macos-intel-desktop.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-production-desktop-evidence
+          path: artifacts/macos-user-flow/
