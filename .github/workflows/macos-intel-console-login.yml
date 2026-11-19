@@ -49,6 +49,12 @@ jobs:
             cliclick c:713,357
             /bin/sleep 2
             /usr/sbin/screencapture -x artifacts/fast-user-switching-control.png
+            cliclick -w 300 dd:969,134 dm:1090,105 dm:1340,65 dm:1570,25 dm:1680,14 du:1680,14
+            /bin/sleep 2
+            cliclick c:1277,912
+            /bin/sleep 2
+            /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png
+            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1' > artifacts/menu-bar-controls.txt || true
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
