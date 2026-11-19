@@ -1,0 +1,47 @@
+name: Intel macOS 26 normal administrator login comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  login:
+    runs-on: macos-26-intel
+    timeout-minutes: 4
+    steps:
+      - name: Start a graphical login for a disposable test administrator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(stat -f '%Su' /dev/console)" = "$(id -un)"
+          mkdir -p artifacts
+          account=cioinstallqa
+          password="$(/usr/bin/openssl rand -hex 10)"
+          echo "::add-mask::$password"
+          sudo -n /usr/sbin/sysadminctl -addUser "$account" -fullName 'Connector VM Test Administrator' -password "$password" -admin >/dev/null 2>&1
+          /usr/sbin/dseditgroup -o checkmember -m "$account" admin | grep -q '^yes'
+          /usr/bin/dscl . -authonly "$account" "$password" >/dev/null 2>&1
+          uid=$(id -u "$account")
+          sysadminctl -secureTokenStatus "$account" > artifacts/secure-token-before.txt 2>&1
+          icon_service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
+          launchctl bootout "$icon_service" || true
+          launchctl disable "$icon_service"
+          service='/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
+          test -x "$service" || { echo 'The system image does not provide the user switching command'; exit 1; }
+          CGSESSION_PATH="$service" QA_UID="$uid" /usr/bin/python3 - <<'PY'
+          import os, subprocess
+          try:
+              result = subprocess.run([os.environ['CGSESSION_PATH'], '-switchToUserID', os.environ['QA_UID']], capture_output=True, timeout=15)
+              print('SWITCH_COMMAND_EXIT', result.returncode)
+          except subprocess.TimeoutExpired:
+              print('SWITCH_COMMAND_TIMED_OUT')
+          PY
+          /bin/sleep 5
+          stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
+          /usr/sbin/screencapture -x artifacts/login-window.png || true
+          launchctl enable "$icon_service" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-console-login-evidence
+          path: artifacts/
