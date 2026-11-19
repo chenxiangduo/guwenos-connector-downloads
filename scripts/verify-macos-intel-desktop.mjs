@@ -106,11 +106,13 @@ async function authenticateTestAdministrator() {
     'keystroke "cioinstallqa"',
     'key code 48',
     'keystroke ' + JSON.stringify(password),
-    'key code 36',
     'end tell',
   ].join('\n'));
   await done;
+  await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
   note('GATEKEEPER_VM_ADMIN_AUTH_SUBMITTED');
+  await delay(2000);
+  await screenshot('02d-gatekeeper-auth-result.png');
 }
 
 async function openVerifiedInstaller(installer) {
