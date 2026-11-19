@@ -44,16 +44,16 @@ jobs:
             /usr/bin/osascript -e 'tell application "System Events" to tell process "System Settings" to get name of windows' > artifacts/settings-window-names.txt || true
             cliclick c:907,475
             /bin/sleep 4
-            /usr/sbin/screencapture -x artifacts/add-controls.png
+            /usr/sbin/screencapture -x artifacts/add-controls.png || true
             /usr/bin/osascript -e 'tell application "System Events" to get name of every application process whose frontmost is true' > artifacts/frontmost-process.txt || true
             cliclick c:713,357
             /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/fast-user-switching-control.png
-            cliclick -w 300 dd:969,134 dm:1090,105 dm:1340,65 dm:1570,25 dm:1680,14 du:1680,14
-            /bin/sleep 2
+            /usr/sbin/screencapture -x artifacts/fast-user-switching-control.png || true
+            cliclick -w 450 m:969,134 dd:969,134 dm:984,132 dm:1090,105 dm:1340,65 dm:1570,25 dm:1696,14 w:600 du:1696,14
+            /bin/sleep 5
             cliclick c:1277,912
             /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png
+            /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png || true
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1' > artifacts/menu-bar-controls.txt || true
             point=$(/usr/bin/osascript <<'APPLESCRIPT'
           tell application "System Events" to tell process "ControlCenter"
@@ -67,7 +67,7 @@ jobs:
             )
             printf '%s\n' "$point" > artifacts/test-administrator-menu-point.txt
             /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/fast-user-menu.png
+            /usr/sbin/screencapture -x artifacts/fast-user-menu.png || true
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
             cliclick "c:$point"
             /bin/sleep 5
