@@ -99,7 +99,14 @@ async function openVerifiedInstaller(installer) {
     note('GATEKEEPER_OPEN_ANYWAY_PRESSED');
     await delay(2000);
     await screenshot('02b-gatekeeper-confirmation.png');
-    await clickSystemButton([...gatekeeperApps, 'System Settings'], ['Open Anyway', 'Open']).catch(() => false);
+    const finalConfirmed = await clickSystemButton(gatekeeperApps, ['Open Anyway', 'Open']).catch(() => false);
+    if (!finalConfirmed) {
+      const dimensions = await exec('/usr/bin/sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', join(output, '02b-gatekeeper-confirmation.png')], { timeout: 5000 });
+      if (!/pixelWidth: 1920\s+pixelHeight: 1080/u.test(dimensions.stdout)) throw new Error('Unexpected desktop size for Gatekeeper confirmation');
+      await exec('cliclick', ['c:960,470'], { timeout: 5000 });
+    }
+    await delay(1500);
+    await screenshot('02c-gatekeeper-after-confirmation.png');
   }
   await open;
 }
