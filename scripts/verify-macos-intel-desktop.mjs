@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import pngjs from 'pngjs';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -69,27 +70,22 @@ async function clickSystemButton(apps, names) {
   return result.stdout.trim() === 'true';
 }
 
-async function screenshotRecognizes(file, pattern) {
-  const source = join(sandbox, 'screen-labels.swift');
-  await writeFile(source, [
-    'import Foundation',
-    'import Vision',
-    'let image = URL(fileURLWithPath: CommandLine.arguments[1])',
-    'let request = VNRecognizeTextRequest()',
-    'request.recognitionLevel = .accurate',
-    'try VNImageRequestHandler(url: image, options: [:]).perform([request])',
-    'for line in request.results ?? [] {',
-    '  if let text = line.topCandidates(1).first?.string { print(text) }',
-    '}',
-  ].join('\n'));
-  const result = await exec('/usr/bin/swift', [source, join(output, file)], { timeout: 25_000 });
-  return pattern.test(result.stdout);
+async function vmAuthorizationDialogVisible() {
+  const filename = join(output, '02c-gatekeeper-after-confirmation.png');
+  const { width, height, data } = pngjs.PNG.sync.read(await readFile(filename));
+  if (width !== 1920 || height !== 1080) return false;
+  // The fixed CI desktop's gold padlock and blue OK button identify the captured prompt.
+  const markers = [[880, 230, 252, 195, 105], [870, 260, 228, 155, 53], [1005, 510, 10, 121, 255]];
+  return markers.every(([x, y, ...rgb]) => {
+    const offset = (y * width + x) * 4;
+    return rgb.every((value, index) => Math.abs(data[offset + index] - value) < 8);
+  });
 }
 
 async function authenticateTestAdministrator() {
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
   if (!password || !/^[a-f0-9]{40}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
-  if (!await screenshotRecognizes('02c-gatekeeper-after-confirmation.png', /Enter an administrator[’']?s username/iu)) {
+  if (!await vmAuthorizationDialogVisible()) {
     return;
   }
   await exec('/usr/bin/sudo', ['-n', '/usr/sbin/sysadminctl', '-addUser', 'cioinstallqa', '-fullName', 'Connector VM Test Administrator', '-password', password, '-admin'], { timeout: 18_000 }).catch(() => {
