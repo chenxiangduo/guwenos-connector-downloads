@@ -6,7 +6,7 @@ permissions:
 jobs:
   login:
     runs-on: macos-26-intel
-    timeout-minutes: 4
+    timeout-minutes: 7
     steps:
       - name: Start a graphical login for a disposable test administrator
         shell: bash
@@ -27,63 +27,100 @@ jobs:
           icon_service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
           launchctl bootout "$icon_service" || true
           launchctl disable "$icon_service"
-          service='/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
-          if test -x "$service"; then
-            CGSESSION_PATH="$service" QA_UID="$uid" /usr/bin/python3 - <<'PY'
-          import os, subprocess
+          trap 'launchctl enable "$icon_service" || true' EXIT
+          probe=$(mktemp -d "$RUNNER_TEMP/cio-console.XXXXXX")
+          cat > "$probe/label.m" <<'OBJC'
+          #import <Foundation/Foundation.h>
+          #import <Vision/Vision.h>
+          int main(int argc, const char *argv[]) {
+            @autoreleasepool {
+              if (argc != 5) return 2;
+              NSURL *url = [NSURL fileURLWithPath:@(argv[1])];
+              VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithURL:url options:@{}];
+              VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] init];
+              request.recognitionLevel = VNRequestTextRecognitionLevelAccurate;
+              request.usesCPUOnly = YES;
+              if (![handler performRequests:@[request] error:NULL]) return 3;
+              NSString *needle = @(argv[2]);
+              int minimumX = atoi(argv[3]), maximumY = atoi(argv[4]);
+              for (VNRecognizedTextObservation *result in request.results) {
+                NSString *text = [[result topCandidates:1] firstObject].string;
+                CGRect bounds = result.boundingBox;
+                int x = (int)(CGRectGetMidX(bounds) * 1920), y = (int)((1 - CGRectGetMidY(bounds)) * 1080);
+                if (x >= minimumX && y <= maximumY && [text localizedCaseInsensitiveContainsString:needle]) {
+                  printf("%d,%d\n", x, y);
+                  return 0;
+                }
+              }
+            }
+            return 1;
+          }
+          OBJC
+          clang -fobjc-arc -framework Foundation -framework Vision "$probe/label.m" -o "$probe/label"
+          capture() { /usr/sbin/screencapture -x "$1"; }
+          find_label() {
+            /usr/bin/python3 - "$probe/label" "$@" <<'PY'
+          import subprocess, sys
           try:
-              result = subprocess.run([os.environ['CGSESSION_PATH'], '-switchToUserID', os.environ['QA_UID']], capture_output=True, timeout=15)
-              print('SWITCH_COMMAND_EXIT', result.returncode)
+              result = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=12)
           except subprocess.TimeoutExpired:
-              print('SWITCH_COMMAND_TIMED_OUT')
+              sys.exit(1)
+          print(result.stdout.strip())
+          sys.exit(result.returncode)
           PY
-          else
-            echo 'Opening the system Menu Bar or Control Center configuration for Fast User Switching.'
+          }
+          menu_items() {
+            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1'
+          }
+          for destination in 1680 1660 1701; do
             /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
-            /bin/sleep 6
-            /usr/bin/osascript -e 'tell application "System Events" to tell process "System Settings" to get name of windows' > artifacts/settings-window-names.txt || true
-            cliclick c:907,475
+            /bin/sleep 8
+            capture "$probe/settings.png" || continue
+            add=$(find_label "$probe/settings.png" 'Add Controls' 800 850) || continue
+            cliclick "c:$add"
             /bin/sleep 4
-            /usr/sbin/screencapture -x artifacts/add-controls.png || true
-            /usr/bin/osascript -e 'tell application "System Events" to get name of every application process whose frontmost is true' > artifacts/frontmost-process.txt || true
-            cliclick c:713,357
-            /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/fast-user-switching-control.png || true
-            cliclick -w 450 m:969,134 dd:969,134 dm:984,132 dm:1090,105 dm:1340,65 dm:1570,25 dm:1696,14 w:600 du:1696,14
-            /bin/sleep 5
+            capture artifacts/add-controls.png || continue
+            category=$(find_label artifacts/add-controls.png 'Fast User Switching' 600 800) || continue
+            cliclick "c:$category"
+            /bin/sleep 3
+            capture artifacts/fast-user-switching-control.png || continue
+            cliclick -w 250 m:969,134 dd:969,134 dm:985,130 dm:1120,105 dm:1390,55 dm:1570,26 "dm:$destination,14" "du:$destination,14"
+            /bin/sleep 3
             cliclick c:1277,912
             /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png || true
-            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1' > artifacts/menu-bar-controls.txt || true
-            point=$(/usr/bin/osascript <<'APPLESCRIPT'
-          tell application "System Events" to tell process "ControlCenter"
-            set switcher to first menu bar item of menu bar 1 whose description is "User"
-            set {leftEdge, topEdge} to position of switcher
-            set {itemWidth, itemHeight} to size of switcher
-            click switcher
-            return ((leftEdge + (itemWidth div 2) - 203) as text) & ",70"
-          end tell
-          APPLESCRIPT
-            )
-            printf '%s\n' "$point" > artifacts/test-administrator-menu-point.txt
-            /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/fast-user-menu.png || true
-            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
-            cliclick "c:$point"
-            /bin/sleep 5
-            /usr/sbin/screencapture -x artifacts/test-administrator-login.png
-          fi
-          /bin/sleep 5
+            menu_items > artifacts/menu-bar-controls.txt || true
+            grep -q 'User' artifacts/menu-bar-controls.txt && break
+          done
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description is "User")'
+          /bin/sleep 2
+          capture artifacts/fast-user-menu.png
+          tile=$(find_label artifacts/fast-user-menu.png 'Connector' 1300 145)
+          x=${tile%,*}
+          y=${tile#*,}
+          cliclick "c:$x,$((y - 34))"
+          /bin/sleep 6
+          capture artifacts/test-administrator-login.png
+          find_label artifacts/test-administrator-login.png 'Connector' 600 1020 > artifacts/confirmed-login-account-label.txt
+          field=$(find_label artifacts/test-administrator-login.png 'Enter Password' 600 1030)
+          cliclick "c:$field"
+          {
+            printf 'tell application "System Events"\n'
+            printf 'repeat with c in characters of "%s"\nkeystroke (contents of c)\ndelay 0.08\nend repeat\n' "$password"
+            printf 'key code 36\nend tell\n'
+          } | /usr/bin/osascript - >/dev/null 2>&1
+          unset password
+          for second in {1..45}; do
+            if [[ $(stat -f '%Su' /dev/console) == "$account" ]] && /bin/launchctl print "gui/$uid" >/dev/null 2>&1; then
+              echo 'DISPOSABLE_ADMIN_GUI_LOGIN_VERIFIED'
+              break
+            fi
+            /bin/sleep 1
+          done
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
-          /usr/bin/python3 - <<'PY'
-          import subprocess
-          try:
-              subprocess.run(['/usr/sbin/screencapture', '-x', 'artifacts/login-window.png'], check=True, timeout=8)
-          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-              print('The test process cannot capture the system login screen.')
-          PY
           /bin/launchctl print "gui/$uid" > artifacts/administrator-gui-status.txt 2>&1 || true
-          launchctl enable "$icon_service" || true
+          sysadminctl -secureTokenStatus "$account" > artifacts/secure-token-after.txt 2>&1
+          test "$(stat -f '%Su' /dev/console)" = "$account"
+          /bin/launchctl print "gui/$uid" >/dev/null
       - uses: actions/upload-artifact@v4
         if: always()
         with:
