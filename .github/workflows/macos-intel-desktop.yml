@@ -24,7 +24,28 @@ jobs:
           npx playwright install chromium
           which cliclick || brew install cliclick
       - name: Run the real desktop flow against production
-        run: node scripts/verify-macos-intel-desktop.mjs
+        env:
+          CIO_DESKTOP_NATIVE_CHROME: '1'
+        run: |
+          service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
+          mkdir -p "$CIO_E2E_OUTPUT"
+          launchctl print "$service" > "$CIO_E2E_OUTPUT/iconservices-before.txt" 2>&1 || true
+          restore_icons() { launchctl enable "$service" || true; }
+          trap restore_icons EXIT
+          /usr/bin/python3 - "$service" <<'PY'
+          import subprocess
+          import sys
+
+          service = sys.argv[1]
+          for verb in ('bootout', 'disable'):
+              try:
+                  subprocess.run(['/bin/launchctl', verb, service], check=True, timeout=12)
+              except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                  print(f'ICON_SERVICES_{verb.upper()}_FAILED: {error}', flush=True)
+                  raise SystemExit(1)
+              print(f'ICON_SERVICES_{verb.upper()}_OK', flush=True)
+          PY
+          node scripts/verify-macos-intel-desktop.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
