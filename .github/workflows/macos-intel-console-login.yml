@@ -55,17 +55,20 @@ jobs:
             /bin/sleep 2
             /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1' > artifacts/menu-bar-controls.txt || true
-            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description is "User")'
-            /bin/sleep 2
-            /usr/sbin/screencapture -x artifacts/fast-user-menu.png
-            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
             point=$(/usr/bin/osascript <<'APPLESCRIPT'
           tell application "System Events" to tell process "ControlCenter"
-            set {leftEdge, topEdge} to position of first window
-            return ((leftEdge + 114) as text) & "," & ((topEdge + 40) as text)
+            set switcher to first menu bar item of menu bar 1 whose description is "User"
+            set {leftEdge, topEdge} to position of switcher
+            set {itemWidth, itemHeight} to size of switcher
+            click switcher
+            return ((leftEdge + (itemWidth div 2) - 203) as text) & ",70"
           end tell
           APPLESCRIPT
             )
+            printf '%s\n' "$point" > artifacts/test-administrator-menu-point.txt
+            /bin/sleep 2
+            /usr/sbin/screencapture -x artifacts/fast-user-menu.png
+            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
             cliclick "c:$point"
             /bin/sleep 5
             /usr/sbin/screencapture -x artifacts/test-administrator-login.png
