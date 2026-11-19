@@ -36,8 +36,11 @@ jobs:
           service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
           mkdir -p "$CIO_E2E_OUTPUT"
           launchctl print "$service" > "$CIO_E2E_OUTPUT/iconservices-before.txt" 2>&1 || true
-          restore_icons() { launchctl enable "$service" || true; }
-          trap restore_icons EXIT
+          cleanup_test_machine() {
+            launchctl enable "$service" || true
+            sudo -n /usr/sbin/sysadminctl -deleteUser cioinstallqa >/dev/null 2>&1 || true
+          }
+          trap cleanup_test_machine EXIT
           /usr/bin/python3 - "$service" <<'PY'
           import subprocess
           import sys
@@ -51,6 +54,13 @@ jobs:
                   raise SystemExit(1)
               print(f'ICON_SERVICES_{verb.upper()}_OK', flush=True)
           PY
+          if [ "$CIO_DESKTOP_COMPARE_HTTP_TRANSFER" != 1 ]; then
+            CIO_TEST_VM_ADMIN_PASSWORD="$(/usr/bin/openssl rand -hex 20)"
+            export CIO_TEST_VM_ADMIN_PASSWORD
+            echo "::add-mask::$CIO_TEST_VM_ADMIN_PASSWORD"
+            sudo -n /usr/sbin/sysadminctl -addUser cioinstallqa -fullName 'Connector VM Test Administrator' -password "$CIO_TEST_VM_ADMIN_PASSWORD" -admin >/dev/null 2>&1
+            /usr/sbin/dseditgroup -o checkmember -m cioinstallqa admin | grep -q '^yes'
+          fi
           node scripts/verify-macos-intel-desktop.mjs
       - uses: actions/upload-artifact@v4
         if: always()
