@@ -88,8 +88,14 @@ async function openVerifiedInstaller(installer) {
     await exec('/usr/bin/open', ['x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Security'], { timeout: 12_000 });
     await delay(2500);
     await screenshot('02a-privacy-and-security.png');
-    await waitUntil(async () => await health() || clickSystemButton(['System Settings'], ['Open Anyway']).catch(() => false), 24_000,
-      'Privacy & Security did not expose Open Anyway for the verified Connector');
+    const settingsConfirmed = await clickSystemButton(['System Settings'], ['Open Anyway']).catch(() => false);
+    if (!settingsConfirmed) {
+      await delay(5500);
+      await screenshot('02a-privacy-and-security-ready.png');
+      const dimensions = await exec('/usr/bin/sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', join(output, '02a-privacy-and-security-ready.png')], { timeout: 5000 });
+      if (!/pixelWidth: 1920\s+pixelHeight: 1080/u.test(dimensions.stdout)) throw new Error('Unexpected desktop size for Privacy & Security');
+      await exec('cliclick', ['c:1238,616'], { timeout: 5000 });
+    }
     note('GATEKEEPER_OPEN_ANYWAY_PRESSED');
     await delay(2000);
     await screenshot('02b-gatekeeper-confirmation.png');
