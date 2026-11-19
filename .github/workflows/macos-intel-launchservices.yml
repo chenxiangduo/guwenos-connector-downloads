@@ -1,0 +1,61 @@
+name: Intel macOS 26 installer launch comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  launch:
+    runs-on: macos-26-intel
+    timeout-minutes: 7
+    steps:
+      - name: Compare Terminal, graphical installer and direct script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          sw_vers
+          test "$(stat -f '%Su' /dev/console)" = "$(id -un)"
+          launchctl print "gui/$(id -u)" >/dev/null
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          out="$GITHUB_WORKSPACE/artifacts"
+          root="$(mktemp -d "$RUNNER_TEMP/cio-launch.XXXXXX")"
+          cd "$root"
+          file='Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip'
+          /usr/bin/curl -fsSL --max-time 100 -o "$file" "https://github.com/chenxiangduo/guwenos-connector-downloads/releases/download/connector-macos-1.0.11/$file"
+          printf '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f  %s\n' "$file" | /usr/bin/shasum -a 256 -c -
+          /usr/bin/ditto -x -k "$file" "$root"
+          state="$HOME/Library/Application Support/ConsultingIntelligenceOS/connector-state"
+          plist="$HOME/Library/LaunchAgents/com.guwenos.connector.plist"
+          ready() { /usr/bin/curl -fsS --max-time 2 http://127.0.0.1:48121/health | /usr/bin/grep -q '"ready":true'; }
+          if ready 2>/dev/null || test -e "$plist"; then echo 'Connector present before clean test'; exit 1; fi
+
+          /usr/bin/open -a Terminal
+          /bin/sleep 12
+          /usr/bin/pgrep -x Terminal || echo 'TERMINAL_PROCESS_NOT_FOUND'
+          /usr/sbin/screencapture -x "$out/01-terminal.png"
+
+          /usr/bin/open "$root/connector/Install.command"
+          for second in {1..45}; do
+            if ready 2>/dev/null; then echo "GRAPHICAL_INSTALL_READY_AFTER_SECONDS=$second"; break; fi
+            /bin/sleep 1
+          done
+          /usr/sbin/screencapture -x "$out/02-graphical-installer.png"
+          test ! -e "$plist" || echo 'GRAPHICAL_INSTALL_REGISTERED_AGENT'
+          if ready 2>/dev/null; then echo 'GRAPHICAL_INSTALL_READY'; exit 0; fi
+          echo 'GRAPHICAL_INSTALL_NOT_READY'
+          terminal_pid=$(/usr/bin/pgrep -x Terminal | /usr/bin/head -n 1 || true)
+          if [ -n "$terminal_pid" ]; then /usr/bin/sample "$terminal_pid" 3 -file "$out/terminal-sample.txt" >/dev/null 2>&1 || true; fi
+
+          /bin/bash "$root/connector/Install.command" >"$out/direct-install.txt" 2>&1
+          cat "$out/direct-install.txt"
+          for second in {1..25}; do
+            if ready 2>/dev/null; then echo "DIRECT_SCRIPT_READY_AFTER_SECONDS=$second"; break; fi
+            /bin/sleep 1
+          done
+          test ! -d "$state" || /usr/bin/find "$state" -maxdepth 1 -name 'launchagent*.log' -exec cp {} "$out" \;
+          ready
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-installer-launch-compare
+          path: artifacts/
