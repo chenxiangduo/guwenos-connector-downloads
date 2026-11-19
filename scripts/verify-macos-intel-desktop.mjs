@@ -86,23 +86,22 @@ async function provisionTestAdministrator() {
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
   if (!password || !/^[a-f0-9]{20}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
   if (process.env.RUNNER_ENVIRONMENT !== 'github-hosted' || process.env.GITHUB_ACTIONS !== 'true') throw new Error('This credential comparison requires a disposable GitHub VM');
-  const user = (await exec('/usr/bin/stat', ['-f', '%Su', '/dev/console'], { timeout: 5000 })).stdout.trim();
-  if (user !== 'runner') throw new Error('The disposable VM console is not using the hosted runner account');
-  await exec('/usr/bin/sudo', ['-n', '/usr/bin/dscl', '.', '-passwd', '/Users/runner', password], { timeout: 18_000 }).catch(() => {
-    throw new Error('Setting the one-run console account password failed');
+  const user = 'cioinstallqa';
+  await exec('/usr/bin/sudo', ['-n', '/usr/sbin/sysadminctl', '-addUser', user, '-fullName', 'Connector VM Test Administrator', '-password', password, '-admin'], { timeout: 18_000 }).catch(() => {
+    throw new Error('Creating the disposable VM administrator failed');
   });
   const administrator = await exec('/usr/sbin/dseditgroup', ['-o', 'checkmember', '-m', user, 'admin'], { timeout: 5000 });
   if (!administrator.stdout.startsWith('yes')) throw new Error('The disposable VM test account is not an administrator');
   await exec('/usr/bin/dscl', ['.', '-authonly', user, password], { timeout: 7000 }).catch(() => {
     throw new Error('The test administrator did not authenticate against the VM user directory');
   });
-  note('GATEKEEPER_VM_CONSOLE_ADMIN_VERIFIED');
+  note('GATEKEEPER_VM_ADMIN_PROVISIONED');
 }
 
 async function authenticateTestAdministrator() {
   if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) return;
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
-  await exec('cliclick', ['c:951,469'], { timeout: 5000 });
+  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
   const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
   const done = new Promise((resolve, reject) => {
     input.on('error', reject);
@@ -110,6 +109,9 @@ async function authenticateTestAdministrator() {
   });
   input.stdin.end([
     'tell application "System Events"',
+    'keystroke "a" using command down',
+    'keystroke "cioinstallqa"',
+    'click at {951, 469}',
     'keystroke "a" using command down',
     'repeat with letter in characters of ' + JSON.stringify(password),
     'keystroke (contents of letter)',
