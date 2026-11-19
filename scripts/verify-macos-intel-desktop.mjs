@@ -15,6 +15,7 @@ const expectedFile = 'Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip';
 const expectedSha256 = '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f';
 const nativeChrome = process.env.CIO_DESKTOP_NATIVE_CHROME === '1';
 const browserDownload = nativeChrome && process.env.CIO_DESKTOP_COMPARE_HTTP_TRANSFER !== '1';
+let passwordEntryVerified = true;
 
 function note(stage, detail = '') {
   console.log(new Date().toISOString(), stage, detail);
@@ -131,37 +132,77 @@ async function pressAuthorizationButton() {
   return result.stdout.startsWith('PRESSED:');
 }
 
-async function authenticateTestAdministrator() {
-  if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) return;
-  const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
-  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
+async function typeInSystemDialog(commands) {
   const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
   const done = new Promise((resolve, reject) => {
     input.on('error', reject);
     input.on('close', code => code === 0 ? resolve() : reject(new Error('Sending the disposable VM credentials failed')));
   });
-  input.stdin.end([
-    'tell application "System Events"',
+  input.stdin.end(['tell application "System Events"', ...commands, 'end tell'].join('\n'));
+  await done;
+}
+
+function passwordFieldFocused({ width, height, data }) {
+  if (width !== 1920 || height !== 1080) return false;
+  const color = (x, y) => data.subarray((y * width + x) * 4, (y * width + x) * 4 + 3);
+  const focusBlue = (x, y) => {
+    const [red, green, blue] = color(x, y);
+    return red < 140 && green > 140 && green < 205 && blue > 225;
+  };
+  return focusBlue(844, 467) && focusBlue(900, 455) && !focusBlue(950, 424);
+}
+
+function countPasswordBullets({ width, data }) {
+  let previousDark = false;
+  let bullets = 0;
+  for (let x = 848; x <= 1060; x++) {
+    const offset = (469 * width + x) * 4;
+    const dark = data[offset] < 65 && data[offset + 1] < 65 && data[offset + 2] < 65;
+    if (dark && !previousDark) bullets++;
+    previousDark = dark;
+  }
+  return bullets;
+}
+
+async function authenticateTestAdministrator() {
+  if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) return;
+  const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
+  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
+  await typeInSystemDialog([
     'keystroke "a" using command down',
     'keystroke "cioinstallqa"',
-    'click at {951, 469}',
-    'keystroke "a" using command down',
+    'key code 48',
+  ]);
+  await delay(350);
+  await desktop('02-auth-password-focus.png');
+  const focus = pngjs.PNG.sync.read(await readFile(join(output, '02-auth-password-focus.png')));
+  if (!passwordFieldFocused(focus)) throw new Error('The secure password field did not receive focus');
+  passwordEntryVerified = false;
+  await typeInSystemDialog([
     'repeat with letter in characters of ' + JSON.stringify(password),
     'keystroke (contents of letter)',
     'delay 0.06',
     'end repeat',
-    'end tell',
-  ].join('\n'));
-  await done;
+  ]);
+  const privateScreenshot = join(sandbox, 'auth-input-private.png');
+  await exec('/usr/sbin/screencapture', ['-x', privateScreenshot], { timeout: 8000 });
+  const privateFrame = pngjs.PNG.sync.read(await readFile(privateScreenshot));
+  await unlink(privateScreenshot);
+  if (!passwordFieldFocused(privateFrame) || countPasswordBullets(privateFrame) !== password.length) {
+    throw new Error('The system dialog did not show all password characters in the secure field');
+  }
+  passwordEntryVerified = true;
+  note('GATEKEEPER_PASSWORD_FIELD_VERIFIED');
   const pressed = await pressAuthorizationButton().catch(error => {
     note('AUTHORIZATION_ACCESSIBILITY_FAILED', String(error.stderr || error.signal || error.code));
     return false;
   });
   note('AUTHORIZATION_ACCESSIBILITY_PRESSED', pressed);
-  if (!pressed) throw new Error('macOS did not expose the authentication button through its accessibility interface');
+  if (!pressed) await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
   await delay(2000);
   await screenshot('02d-gatekeeper-auth-result.png');
   if (await vmAuthorizationDialogVisible('02d-gatekeeper-auth-result.png')) {
+    await typeInSystemDialog(['key code 76']);
     await delay(3500);
     await screenshot('02e-gatekeeper-auth-recheck.png');
     if (await vmAuthorizationDialogVisible('02e-gatekeeper-auth-recheck.png')) {
@@ -409,7 +450,7 @@ page.on('response', async response => {
 } catch (error) {
   process.exitCode = 1;
   note('DESKTOP_FLOW_FAILED', error.message);
-  await screenshot('failure-desktop.png');
+  if (passwordEntryVerified) await screenshot('failure-desktop.png');
   if (browserDownload) await captureAuthorizationDiagnostics().catch(error => note('AUTH_DIAGNOSTICS_UNAVAILABLE', error.code ?? error.signal));
   const state = page ? await bounded(page.locator('#connector-message-text').textContent({ timeout: 2000 }), 3000, 'Reading browser status').catch(() => '') : '';
   note('VISIBLE_CONNECTOR_STATUS', state?.replace(/\b\d{6}\b/g, '[code]') ?? '');
