@@ -55,6 +55,10 @@ jobs:
             /bin/sleep 2
             /usr/sbin/screencapture -x artifacts/menu-bar-with-switcher.png
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1' > artifacts/menu-bar-controls.txt || true
+            cliclick c:1707,14
+            /bin/sleep 2
+            /usr/sbin/screencapture -x artifacts/fast-user-menu.png
+            /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
