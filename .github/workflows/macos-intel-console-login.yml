@@ -122,12 +122,42 @@ jobs:
           APPLESCRIPT
           )
           echo 'USER_SWITCH_MENU_OPENED'
-          point=$(wait_for_label artifacts/fast-user-menu.png 'Login Window' 1300 200 15) || {
-            x=${relative_tile%,*}
-            point="$((x - 72)),157"
-          }
-          printf '%s\n' "$point" > artifacts/login-window-menu-point.txt
-          cliclick "c:$point"
+          capture artifacts/fast-user-menu.png || true
+          /usr/bin/osascript <<'APPLESCRIPT' > artifacts/login-window-menu-accessibility.txt
+          tell application "System Events" to tell process "ControlCenter"
+            set summary to ""
+            repeat with windowRef in windows
+              set currentWindow to contents of windowRef
+              repeat with itemRef in entire contents of currentWindow
+                set itemElement to contents of itemRef
+                try
+                  set roleLabel to get role of itemElement
+                  set labelText to ""
+                  try
+                    set labelText to get name of itemElement as text
+                  end try
+                  try
+                    set labelText to labelText & " " & (get description of itemElement as text)
+                  end try
+                  if labelText is not "" then set summary to summary & roleLabel & " " & labelText & linefeed
+                  if (roleLabel is "AXButton" or roleLabel is "AXMenuItem") and labelText contains "Login Window" then
+                    perform action "AXPress" of itemElement
+                    return "PRESSED" & linefeed & summary
+                  end if
+                end try
+              end repeat
+            end repeat
+            return summary
+          end tell
+          APPLESCRIPT
+          if ! grep -q '^PRESSED' artifacts/login-window-menu-accessibility.txt; then
+            point=$(wait_for_label artifacts/fast-user-menu.png 'Login Window' 1300 200 15) || {
+              x=${relative_tile%,*}
+              point="$((x - 72)),157"
+            }
+            printf '%s\n' "$point" > artifacts/login-window-menu-point.txt
+            cliclick "c:$point"
+          fi
           echo 'LOGIN_WINDOW_REQUESTED'
           account_tile=$(wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 28)
           printf '%s\n' "$account_tile" > artifacts/confirmed-login-account-label.txt
