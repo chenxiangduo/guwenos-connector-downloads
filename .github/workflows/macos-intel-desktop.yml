@@ -58,8 +58,6 @@ jobs:
             CIO_TEST_VM_ADMIN_PASSWORD="$(/usr/bin/openssl rand -hex 20)"
             export CIO_TEST_VM_ADMIN_PASSWORD
             echo "::add-mask::$CIO_TEST_VM_ADMIN_PASSWORD"
-            sudo -n /usr/sbin/sysadminctl -addUser cioinstallqa -fullName 'Connector VM Test Administrator' -password "$CIO_TEST_VM_ADMIN_PASSWORD" -admin >/dev/null 2>&1
-            /usr/sbin/dseditgroup -o checkmember -m cioinstallqa admin | grep -q '^yes'
           fi
           node scripts/verify-macos-intel-desktop.mjs
       - uses: actions/upload-artifact@v4
