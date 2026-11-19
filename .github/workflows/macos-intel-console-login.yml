@@ -59,6 +59,16 @@ jobs:
             /bin/sleep 2
             /usr/sbin/screencapture -x artifacts/fast-user-menu.png
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get name of windows' > artifacts/fast-user-menu-windows.txt || true
+            point=$(/usr/bin/osascript <<'APPLESCRIPT'
+          tell application "System Events" to tell process "ControlCenter"
+            set {leftEdge, topEdge} to position of first window
+            return ((leftEdge + 114) as text) & "," & ((topEdge + 40) as text)
+          end tell
+          APPLESCRIPT
+            )
+            cliclick "c:$point"
+            /bin/sleep 5
+            /usr/sbin/screencapture -x artifacts/test-administrator-login.png
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
