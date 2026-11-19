@@ -100,36 +100,57 @@ async function provisionTestAdministrator() {
 }
 
 async function pressAuthorizationButton() {
+  const windowInventory = [
+    "ObjC.import('CoreGraphics');",
+    'const windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17, 0));',
+    'JSON.stringify(windows.filter(w => {',
+    '  const b = w.kCGWindowBounds;',
+    '  return b.X <= 960 && b.X + b.Width >= 960 && b.Y <= 347 && b.Y + b.Height >= 347;',
+    '}).slice(0, 10).map(w => [w.kCGWindowOwnerPID, w.kCGWindowOwnerName, w.kCGWindowLayer, w.kCGWindowBounds]));',
+  ].join('\n');
+  const inventory = await exec('/usr/bin/osascript', ['-l', 'JavaScript', '-e', windowInventory], { timeout: 6000 });
+  const windows = JSON.parse(inventory.stdout);
+  await writeFile(join(output, 'authorization-window-owners.txt'), JSON.stringify(windows, null, 2));
+  const panel = windows.find(([, , , bounds]) => bounds.Width >= 200 && bounds.Width <= 400 && bounds.Height >= 270 && bounds.Height <= 450);
+  if (!panel) return false;
+  const [pid, owner] = panel;
+  note('AUTHORIZATION_WINDOW_OWNER', owner);
   const script = [
+    'on run argv',
     'set uiSummary to ""',
     'tell application "System Events"',
-    'set candidates to every application process whose frontmost is true or name contains "SecurityAgent" or name contains "authorization" or name is "CoreServicesUIAgent" or name is "System Settings"',
-    'repeat with candidate in candidates',
-    'set processName to name of candidate as text',
+    'set identity to item 1 of argv as integer',
     'try',
-    'set uiSummary to uiSummary & processName & ": windows=" & (count of windows of candidate) & linefeed',
-    'repeat with prompt in windows of candidate',
-    'repeat with itemRef in entire contents of prompt',
+    'set candidate to first application process whose unix id is identity',
+    'set uiSummary to "owner windows=" & (count of windows of candidate) & linefeed',
+    'repeat with promptRef in windows of candidate',
+    'set promptWindow to contents of promptRef',
+    'set potentialControls to (buttons of promptWindow) & (entire contents of promptWindow)',
+    'repeat with controlRef in potentialControls',
     'try',
-    'if (role of itemRef is "AXButton") and ((name of itemRef as text) is "OK") then',
-    'perform action "AXPress" of itemRef',
-    'return "PRESSED:" & processName',
+    'set controlElement to contents of controlRef',
+    'set controlRole to get role of controlElement',
+    'if controlRole is "AXButton" then',
+    'set controlTitle to get name of controlElement',
+    'set uiSummary to uiSummary & "button=" & controlTitle & linefeed',
+    'if controlTitle is "OK" then',
+    'perform action "AXPress" of controlElement',
+    'return "PRESSED"',
     'end if',
-    'on error eventMessage number eventNumber',
-    'if eventNumber is not -1728 then set uiSummary to uiSummary & processName & ": AX error " & eventNumber & linefeed',
+    'end if',
     'end try',
     'end repeat',
     'end repeat',
     'on error eventMessage number eventNumber',
-    'set uiSummary to uiSummary & processName & ": AX query error " & eventNumber & linefeed',
+    'set uiSummary to uiSummary & "AX query error " & eventNumber & linefeed',
     'end try',
-    'end repeat',
     'end tell',
     'return uiSummary',
+    'end run',
   ].join('\n');
-  const result = await exec('/usr/bin/osascript', ['-e', script], { timeout: 12_000 });
+  const result = await exec('/usr/bin/osascript', ['-e', script, String(pid)], { timeout: 12_000 });
   await writeFile(join(output, 'authorization-accessibility.txt'), result.stdout);
-  return result.stdout.startsWith('PRESSED:');
+  return result.stdout.trim() === 'PRESSED';
 }
 
 async function typeInSystemDialog(commands) {
