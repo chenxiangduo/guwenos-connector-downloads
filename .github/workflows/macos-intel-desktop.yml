@@ -1,6 +1,11 @@
 name: Intel macOS 26 production desktop acceptance
 on:
   workflow_dispatch:
+    inputs:
+      compare_http_transfer:
+        description: Fetch the exact installer with the browser session to isolate the downstream flow
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -26,6 +31,7 @@ jobs:
       - name: Run the real desktop flow against production
         env:
           CIO_DESKTOP_NATIVE_CHROME: '1'
+          CIO_DESKTOP_COMPARE_HTTP_TRANSFER: ${{ inputs.compare_http_transfer && '1' || '0' }}
         run: |
           service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
           mkdir -p "$CIO_E2E_OUTPUT"
