@@ -13,6 +13,7 @@ const sandbox = resolve(process.env.RUNNER_TEMP ?? '/tmp', 'cio-desktop-acceptan
 const expectedFile = 'Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip';
 const expectedSha256 = '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f';
 const nativeChrome = process.env.CIO_DESKTOP_NATIVE_CHROME === '1';
+const browserDownload = nativeChrome && process.env.CIO_DESKTOP_COMPARE_HTTP_TRANSFER !== '1';
 
 function note(stage, detail = '') {
   console.log(new Date().toISOString(), stage, detail);
@@ -73,7 +74,7 @@ async function openVerifiedInstaller(installer) {
   note('INSTALLER_OPEN_REQUESTED');
   await delay(6000);
   await screenshot('02-install-desktop.png');
-  if (nativeChrome && !await health()) {
+  if (browserDownload && !await health()) {
     const gatekeeperApps = ['CoreServicesUIAgent', 'SecurityAgent', 'syspolicyd'];
     const dismiss = await clickSystemButton(gatekeeperApps, ['Done']).catch(() => false);
     if (!dismiss) {
@@ -223,7 +224,7 @@ page.on('response', async response => {
   }
   await page.screenshot({ path: join(output, '01-download-entry.png'), timeout: 12_000 });
   const zip = join(sandbox, expectedFile);
-  if (nativeChrome) {
+  if (browserDownload) {
     const [download] = await Promise.all([page.waitForEvent('download', { timeout: 50_000 }), downloadLink.click()]);
     const chromiumFile = await bounded(download.path(), 80_000, 'Completing Chrome download');
     await rename(chromiumFile, zip);
