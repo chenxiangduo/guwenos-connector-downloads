@@ -57,7 +57,21 @@ jobs:
           }
           OBJC
           clang -fobjc-arc -framework Foundation -framework CoreGraphics -framework Vision "$probe/label.m" -o "$probe/label"
-          capture() { /usr/sbin/screencapture -x "$1"; }
+          login_view_pending=0
+          capture() {
+            local destination=$1 pid target
+            if [[ $login_view_pending == 1 ]]; then
+              pid=$(/bin/ps -axo pid=,uid=,comm= | awk '$2 == 0 && $3 ~ /\/loginwindow$/ { last = $1 } END { print last }')
+              if [[ -n $pid ]]; then
+                target="$probe/active-login.png"
+                if sudo -n /bin/launchctl bsexec "$pid" /usr/sbin/screencapture -x "$target" >/dev/null 2>&1; then
+                  sudo -n /bin/cat "$target" > "$destination"
+                  return
+                fi
+              fi
+            fi
+            /usr/sbin/screencapture -x "$destination"
+          }
           find_label() {
             /usr/bin/python3 - "$probe/label" "$@" <<'PY'
           import subprocess, sys
@@ -160,9 +174,11 @@ jobs:
             cliclick "c:$point"
           fi
           echo 'LOGIN_WINDOW_REQUESTED'
+          login_view_pending=1
           /bin/sleep 2
           stat -f '%Su' /dev/console > artifacts/console-user-after-switch-request.txt
           /usr/sbin/ioreg -n Root -d 1 | grep 'IOConsoleUsers' > artifacts/console-session-after-switch-request.txt || true
+          /bin/ps -axo pid=,uid=,comm= | grep '/loginwindow$' > artifacts/login-window-processes.txt || true
           account_tile=$(wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 28)
           printf '%s\n' "$account_tile" > artifacts/confirmed-login-account-label.txt
           cliclick "c:$account_tile"
