@@ -76,6 +76,13 @@ async function openVerifiedInstaller(installer) {
   if (nativeChrome && !await health()) {
     const gatekeeperApps = ['CoreServicesUIAgent', 'SecurityAgent', 'syspolicyd'];
     const dismiss = await clickSystemButton(gatekeeperApps, ['Done']).catch(() => false);
+    if (!dismiss) {
+      const dimensions = await exec('/usr/bin/sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', join(output, '02-install-desktop.png')], { timeout: 5000 });
+      if (!/pixelWidth: 1920\s+pixelHeight: 1080/u.test(dimensions.stdout)) throw new Error('Unexpected desktop size for verified Gatekeeper dialog');
+      await exec('cliclick', ['c:960,454'], { timeout: 5000 });
+      await delay(700);
+      await screenshot('02-dismissed-gatekeeper.png');
+    }
     note('GATEKEEPER_FIRST_DIALOG_DISMISSED', dismiss);
     await exec('/usr/bin/open', ['x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Security'], { timeout: 12_000 });
     await delay(2500);
