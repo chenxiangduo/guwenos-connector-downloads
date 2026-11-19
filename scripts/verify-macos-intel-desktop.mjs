@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -12,6 +12,7 @@ const output = resolve(process.env.CIO_E2E_OUTPUT ?? 'artifacts/macos-user-flow'
 const sandbox = resolve(process.env.RUNNER_TEMP ?? '/tmp', 'cio-desktop-acceptance');
 const expectedFile = 'Consulting-Intelligence-Connector-macOS-x64-1.0.11.zip';
 const expectedSha256 = '0067777c6fb668fd18922c2d024962fd3e98c375b14d4bc2b11300144a68e90f';
+const nativeChrome = process.env.CIO_DESKTOP_NATIVE_CHROME === '1';
 
 function note(stage, detail = '') {
   console.log(new Date().toISOString(), stage, detail);
@@ -131,10 +132,17 @@ let browser;
 let context;
 let page;
 try {
-note('HEADLESS_BROWSER_STARTING_WITH_NATIVE_DESKTOP');
-browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: true, args: ['--no-proxy-server'], timeout: 25_000 });
-context = await bounded(browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 900 } }), 15_000, 'Creating browser context');
-page = await bounded(context.newPage(), 15_000, 'Opening browser tab');
+note(nativeChrome ? 'HEADFUL_CHROME_STARTING' : 'HEADLESS_BROWSER_STARTING_WITH_NATIVE_DESKTOP');
+const browserOptions = { channel: nativeChrome ? 'chrome' : 'chromium', headless: !nativeChrome, chromiumSandbox: true, args: ['--no-proxy-server'], timeout: 25_000 };
+const contextOptions = { acceptDownloads: true, viewport: { width: 1440, height: 900 } };
+if (nativeChrome) {
+  context = await chromium.launchPersistentContext(join(sandbox, 'chrome-profile'), { ...browserOptions, ...contextOptions, downloadsPath: sandbox });
+  page = context.pages()[0];
+} else {
+  browser = await chromium.launch(browserOptions);
+  context = await bounded(browser.newContext(contextOptions), 15_000, 'Creating browser context');
+}
+page ??= await bounded(context.newPage(), 15_000, 'Opening browser tab');
 page.setDefaultTimeout(20_000);
 page.setDefaultNavigationTimeout(30_000);
 note('HEADFUL_CHROME_TAB_READY');
@@ -158,18 +166,24 @@ page.on('response', async response => {
   }
   await page.screenshot({ path: join(output, '01-download-entry.png'), timeout: 12_000 });
   const zip = join(sandbox, expectedFile);
-  const cookies = await context.cookies(targetUrl.href);
-  if (!cookies.length) throw new Error('Production login did not provide a download session');
-  const cookieJar = join(sandbox, 'download-session.cookies');
-  const cookieRows = cookies.map(cookie => [cookie.domain, cookie.domain.startsWith('.') ? 'TRUE' : 'FALSE', cookie.path,
-    cookie.secure ? 'TRUE' : 'FALSE', Math.max(0, Math.floor(cookie.expires)), cookie.name, cookie.value].join('\t'));
-  await writeFile(cookieJar, '# Netscape HTTP Cookie File\n' + cookieRows.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
-  try {
-    const transfer = await exec('/usr/bin/curl', ['--fail', '--silent', '--show-error', '--connect-timeout', '12', '--max-time', '120', '--cookie', cookieJar, '--output', zip,
-      '--write-out', '%{http_code} %{size_download}', targetUrl.href], { timeout: 125_000 });
-    note('OFFICIAL_DOWNLOAD_AUTHENTICATED_HTTP', transfer.stdout);
-  } finally {
-    await unlink(cookieJar);
+  if (nativeChrome) {
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 50_000 }), downloadLink.click()]);
+    const chromiumFile = await bounded(download.path(), 80_000, 'Completing Chrome download');
+    await rename(chromiumFile, zip);
+  } else {
+    const cookies = await context.cookies(targetUrl.href);
+    if (!cookies.length) throw new Error('Production login did not provide a download session');
+    const cookieJar = join(sandbox, 'download-session.cookies');
+    const cookieRows = cookies.map(cookie => [cookie.domain, cookie.domain.startsWith('.') ? 'TRUE' : 'FALSE', cookie.path,
+      cookie.secure ? 'TRUE' : 'FALSE', Math.max(0, Math.floor(cookie.expires)), cookie.name, cookie.value].join('\t'));
+    await writeFile(cookieJar, '# Netscape HTTP Cookie File\n' + cookieRows.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
+    try {
+      const transfer = await exec('/usr/bin/curl', ['--fail', '--silent', '--show-error', '--connect-timeout', '12', '--max-time', '120', '--cookie', cookieJar, '--output', zip,
+        '--write-out', '%{http_code} %{size_download}', targetUrl.href], { timeout: 125_000 });
+      note('OFFICIAL_DOWNLOAD_AUTHENTICATED_HTTP', transfer.stdout);
+    } finally {
+      await unlink(cookieJar);
+    }
   }
   const hash = createHash('sha256').update(await readFile(zip)).digest('hex');
   if (hash !== expectedSha256) throw new Error('Production package SHA-256 mismatch');
@@ -222,7 +236,7 @@ page.on('response', async response => {
   if (page) await bounded(page.screenshot({ path: join(output, 'failure-browser.png'), timeout: 5000 }), 7000, 'Capturing browser').catch(() => {});
   throw error;
 } finally {
-  if (browser) await bounded(browser.close(), 5000, 'Closing Chromium').catch(error => {
+  if (context) await bounded(browser ? browser.close() : context.close(), 5000, 'Closing Chromium').catch(error => {
     note('CLEANUP_FAILED', error.message);
     process.exit(process.exitCode ?? 0);
   });
