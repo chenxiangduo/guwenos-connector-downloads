@@ -55,7 +55,7 @@ jobs:
               print(f'ICON_SERVICES_{verb.upper()}_OK', flush=True)
           PY
           if [ "$CIO_DESKTOP_COMPARE_HTTP_TRANSFER" != 1 ]; then
-            CIO_TEST_VM_ADMIN_PASSWORD="$(/usr/bin/openssl rand -hex 20)"
+            CIO_TEST_VM_ADMIN_PASSWORD="$(/usr/bin/openssl rand -hex 10)"
             export CIO_TEST_VM_ADMIN_PASSWORD
             echo "::add-mask::$CIO_TEST_VM_ADMIN_PASSWORD"
           fi
