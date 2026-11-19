@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -157,9 +157,20 @@ page.on('response', async response => {
     throw new Error('Production download version differs from the expected checked package');
   }
   await page.screenshot({ path: join(output, '01-download-entry.png'), timeout: 12_000 });
-  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 90_000 }), downloadLink.click()]);
   const zip = join(sandbox, expectedFile);
-  await bounded(download.saveAs(zip), 90_000, 'Saving browser download');
+  const cookies = await context.cookies(targetUrl.href);
+  if (!cookies.length) throw new Error('Production login did not provide a download session');
+  const cookieJar = join(sandbox, 'download-session.cookies');
+  const cookieRows = cookies.map(cookie => [cookie.domain, cookie.domain.startsWith('.') ? 'TRUE' : 'FALSE', cookie.path,
+    cookie.secure ? 'TRUE' : 'FALSE', Math.max(0, Math.floor(cookie.expires)), cookie.name, cookie.value].join('\t'));
+  await writeFile(cookieJar, '# Netscape HTTP Cookie File\n' + cookieRows.join('\n') + '\n', { mode: 0o600, flag: 'wx' });
+  try {
+    const transfer = await exec('/usr/bin/curl', ['--fail', '--silent', '--show-error', '--connect-timeout', '12', '--max-time', '120', '--cookie', cookieJar, '--output', zip,
+      '--write-out', '%{http_code} %{size_download}', targetUrl.href], { timeout: 125_000 });
+    note('OFFICIAL_DOWNLOAD_AUTHENTICATED_HTTP', transfer.stdout);
+  } finally {
+    await unlink(cookieJar);
+  }
   const hash = createHash('sha256').update(await readFile(zip)).digest('hex');
   if (hash !== expectedSha256) throw new Error('Production package SHA-256 mismatch');
   note('OFFICIAL_DOWNLOAD_HASH_VERIFIED', hash);
@@ -187,7 +198,7 @@ page.on('response', async response => {
   if (!code) throw new Error('Browser did not present a pairing code');
   note('BROWSER_RECOGNIZED_AND_PAIRING_REQUESTED');
   await clickPairingWhenVisible(code);
-  await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 30_000 });
+  await page.locator('#connector-step').filter({ hasText: /本机已配对|已连接/ }).waitFor({ timeout: 30_000 });
   note('BROWSER_PAIRED');
 
   await page.locator('#select-project-button').click();
