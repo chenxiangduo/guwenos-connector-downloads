@@ -97,6 +97,38 @@ async function provisionTestAdministrator() {
     throw new Error('The test administrator did not authenticate against the VM user directory');
   });
   note('GATEKEEPER_VM_ADMIN_PROVISIONED');
+  const loginProgram = join(sandbox, 'verify-admin-login.exp');
+  await writeFile(loginProgram, `
+log_user 0
+set timeout 22
+set secret $env(CIO_TEST_VM_ADMIN_PASSWORD)
+unset env(CIO_TEST_VM_ADMIN_PASSWORD)
+spawn /usr/bin/login cioinstallqa
+expect {
+  -re {(?i)password:} { send -- "$secret\\r" }
+  timeout { exit 21 }
+  eof { exit 22 }
+}
+unset secret
+expect {
+  -re {(?i)login incorrect} { exit 23 }
+  -re {[%#$] ?$} { send -- "/usr/bin/id -un\\r" }
+  timeout { exit 24 }
+  eof { exit 25 }
+}
+expect {
+  -re {\\r\\ncioinstallqa\\r\\n} { send -- "exit\\r" }
+  timeout { exit 26 }
+  eof { exit 27 }
+}
+expect eof
+`, { mode: 0o600 });
+  try {
+    await exec('/usr/bin/expect', [loginProgram], { timeout: 65_000 });
+    note('MACOS_PASSWORD_LOGIN_CONFIRMED', user);
+  } catch (error) {
+    note('MACOS_PASSWORD_LOGIN_UNCONFIRMED', error.code ?? error.signal);
+  }
 }
 
 async function pressAuthorizationButton() {
