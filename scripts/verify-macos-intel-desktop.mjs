@@ -70,8 +70,8 @@ async function clickSystemButton(apps, names) {
   return result.stdout.trim() === 'true';
 }
 
-async function vmAuthorizationDialogVisible() {
-  const filename = join(output, '02c-gatekeeper-after-confirmation.png');
+async function vmAuthorizationDialogVisible(screenshotName) {
+  const filename = join(output, screenshotName);
   const { width, height, data } = pngjs.PNG.sync.read(await readFile(filename));
   if (width !== 1920 || height !== 1080) return false;
   // The fixed CI desktop's gold padlock and blue OK button identify the captured prompt.
@@ -85,7 +85,7 @@ async function vmAuthorizationDialogVisible() {
 async function authenticateTestAdministrator() {
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
   if (!password || !/^[a-f0-9]{40}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
-  if (!await vmAuthorizationDialogVisible()) {
+  if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) {
     return;
   }
   await exec('/usr/bin/sudo', ['-n', '/usr/sbin/sysadminctl', '-addUser', 'cioinstallqa', '-fullName', 'Connector VM Test Administrator', '-password', password, '-admin'], { timeout: 18_000 }).catch(() => {
@@ -93,6 +93,9 @@ async function authenticateTestAdministrator() {
   });
   const administrator = await exec('/usr/sbin/dseditgroup', ['-o', 'checkmember', '-m', 'cioinstallqa', 'admin'], { timeout: 5000 });
   if (!administrator.stdout.startsWith('yes')) throw new Error('The disposable VM test account is not an administrator');
+  await exec('/usr/bin/dscl', ['.', '-authonly', 'cioinstallqa', password], { timeout: 7000 }).catch(() => {
+    throw new Error('The test administrator did not authenticate against the VM user directory');
+  });
   note('GATEKEEPER_VM_ADMIN_PROVISIONED');
   await exec('cliclick', ['c:938,437'], { timeout: 5000 });
   const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
@@ -113,6 +116,14 @@ async function authenticateTestAdministrator() {
   note('GATEKEEPER_VM_ADMIN_AUTH_SUBMITTED');
   await delay(2000);
   await screenshot('02d-gatekeeper-auth-result.png');
+  if (await vmAuthorizationDialogVisible('02d-gatekeeper-auth-result.png')) {
+    await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
+    await delay(3500);
+    await screenshot('02e-gatekeeper-auth-recheck.png');
+    if (await vmAuthorizationDialogVisible('02e-gatekeeper-auth-recheck.png')) {
+      throw new Error('macOS did not dismiss the authorization prompt after submission with a verified VM administrator');
+    }
+  }
 }
 
 async function openVerifiedInstaller(installer) {
