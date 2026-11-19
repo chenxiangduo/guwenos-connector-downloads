@@ -92,12 +92,18 @@ async function authenticateTestAdministrator() {
   if (!await screenshotRecognizes('02c-gatekeeper-after-confirmation.png', /Enter an administrator[’']?s username/iu)) {
     return;
   }
+  await exec('/usr/bin/sudo', ['-n', '/usr/sbin/sysadminctl', '-addUser', 'cioinstallqa', '-fullName', 'Connector VM Test Administrator', '-password', password, '-admin'], { timeout: 18_000 }).catch(() => {
+    throw new Error('Creating the disposable VM administrator failed');
+  });
+  const administrator = await exec('/usr/sbin/dseditgroup', ['-o', 'checkmember', '-m', 'cioinstallqa', 'admin'], { timeout: 5000 });
+  if (!administrator.stdout.startsWith('yes')) throw new Error('The disposable VM test account is not an administrator');
+  note('GATEKEEPER_VM_ADMIN_PROVISIONED');
+  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
   const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
   const done = new Promise((resolve, reject) => {
     input.on('error', reject);
     input.on('close', code => code === 0 ? resolve() : reject(new Error('Sending the disposable VM credentials failed')));
   });
-  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
   input.stdin.end([
     'tell application "System Events"',
     'keystroke "a" using command down',
@@ -247,7 +253,7 @@ let context;
 let page;
 try {
 note(nativeChrome ? 'HEADFUL_CHROME_STARTING' : 'HEADLESS_BROWSER_STARTING_WITH_NATIVE_DESKTOP');
-const browserOptions = { channel: nativeChrome ? 'chrome' : 'chromium', headless: !nativeChrome, chromiumSandbox: true, args: ['--no-proxy-server'], timeout: 25_000 };
+const browserOptions = { channel: nativeChrome ? 'chrome' : 'chromium', headless: !nativeChrome, chromiumSandbox: true, args: ['--no-proxy-server'], timeout: 55_000 };
 const contextOptions = { acceptDownloads: true, viewport: { width: 1440, height: 900 } };
 if (nativeChrome) {
   context = await chromium.launchPersistentContext(join(sandbox, 'chrome-profile'), { ...browserOptions, ...contextOptions, downloadsPath: sandbox });
