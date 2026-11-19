@@ -100,15 +100,32 @@ async function provisionTestAdministrator() {
 }
 
 async function pressAuthorizationButton() {
-  const windowInventory = [
-    "ObjC.import('CoreGraphics');",
-    'const windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(17, 0));',
-    'JSON.stringify(windows.filter(w => {',
-    '  const b = w.kCGWindowBounds;',
-    '  return b.X <= 960 && b.X + b.Width >= 960 && b.Y <= 347 && b.Y + b.Height >= 347;',
-    '}).slice(0, 10).map(w => [w.kCGWindowOwnerPID, w.kCGWindowOwnerName, w.kCGWindowLayer, w.kCGWindowBounds]));',
-  ].join('\n');
-  const inventory = await exec('/usr/bin/osascript', ['-l', 'JavaScript', '-e', windowInventory], { timeout: 6000 });
+  const executable = join(sandbox, 'window-owners');
+  const source = join(sandbox, 'window-owners.m');
+  await writeFile(source, `
+#import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
+int main(void) {
+  @autoreleasepool {
+    NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
+    NSMutableArray *owners = [NSMutableArray array];
+    for (NSDictionary *window in windows) {
+      NSDictionary *bounds = window[(__bridge NSString *)kCGWindowBounds];
+      CGRect rect;
+      if (CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)bounds, &rect) && CGRectContainsPoint(rect, CGPointMake(960, 347))) {
+        [owners addObject:@[window[(__bridge NSString *)kCGWindowOwnerPID] ?: @0, window[(__bridge NSString *)kCGWindowOwnerName] ?: @"", window[(__bridge NSString *)kCGWindowLayer] ?: @0, bounds]];
+      }
+      if ([owners count] == 10) break;
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:owners options:0 error:nil];
+    if (!json) return 1;
+    fwrite([json bytes], 1, [json length], stdout);
+  }
+  return 0;
+}
+`);
+  await exec('/usr/bin/clang', ['-fobjc-arc', '-framework', 'Foundation', '-framework', 'CoreGraphics', source, '-o', executable], { timeout: 45_000 });
+  const inventory = await exec(executable, [], { timeout: 6000 });
   const windows = JSON.parse(inventory.stdout);
   await writeFile(join(output, 'authorization-window-owners.txt'), JSON.stringify(windows, null, 2));
   const panel = windows.find(([, , , bounds]) => bounds.Width >= 200 && bounds.Width <= 400 && bounds.Height >= 270 && bounds.Height <= 450);
