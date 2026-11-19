@@ -98,6 +98,39 @@ async function provisionTestAdministrator() {
   note('GATEKEEPER_VM_ADMIN_PROVISIONED');
 }
 
+async function pressAuthorizationButton() {
+  const script = [
+    'set uiSummary to ""',
+    'tell application "System Events"',
+    'set candidates to every application process whose frontmost is true or name contains "SecurityAgent" or name contains "authorization" or name is "CoreServicesUIAgent" or name is "System Settings"',
+    'repeat with candidate in candidates',
+    'set processName to name of candidate as text',
+    'try',
+    'set uiSummary to uiSummary & processName & ": windows=" & (count of windows of candidate) & linefeed',
+    'repeat with prompt in windows of candidate',
+    'repeat with itemRef in entire contents of prompt',
+    'try',
+    'if (role of itemRef is "AXButton") and ((name of itemRef as text) is "OK") then',
+    'perform action "AXPress" of itemRef',
+    'return "PRESSED:" & processName',
+    'end if',
+    'on error eventMessage number eventNumber',
+    'if eventNumber is not -1728 then set uiSummary to uiSummary & processName & ": AX error " & eventNumber & linefeed',
+    'end try',
+    'end repeat',
+    'end repeat',
+    'on error eventMessage number eventNumber',
+    'set uiSummary to uiSummary & processName & ": AX query error " & eventNumber & linefeed',
+    'end try',
+    'end repeat',
+    'end tell',
+    'return uiSummary',
+  ].join('\n');
+  const result = await exec('/usr/bin/osascript', ['-e', script], { timeout: 12_000 });
+  await writeFile(join(output, 'authorization-accessibility.txt'), result.stdout);
+  return result.stdout.startsWith('PRESSED:');
+}
+
 async function authenticateTestAdministrator() {
   if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) return;
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
@@ -120,12 +153,15 @@ async function authenticateTestAdministrator() {
     'end tell',
   ].join('\n'));
   await done;
-  await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
-  note('GATEKEEPER_VM_ADMIN_AUTH_SUBMITTED');
+  const pressed = await pressAuthorizationButton().catch(error => {
+    note('AUTHORIZATION_ACCESSIBILITY_FAILED', String(error.stderr || error.signal || error.code));
+    return false;
+  });
+  note('AUTHORIZATION_ACCESSIBILITY_PRESSED', pressed);
+  if (!pressed) throw new Error('macOS did not expose the authentication button through its accessibility interface');
   await delay(2000);
   await screenshot('02d-gatekeeper-auth-result.png');
   if (await vmAuthorizationDialogVisible('02d-gatekeeper-auth-result.png')) {
-    await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
     await delay(3500);
     await screenshot('02e-gatekeeper-auth-recheck.png');
     if (await vmAuthorizationDialogVisible('02e-gatekeeper-auth-recheck.png')) {
