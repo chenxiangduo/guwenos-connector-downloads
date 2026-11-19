@@ -127,13 +127,14 @@ await mkdir(project, { recursive: true });
 await writeFile(join(project, '合成项目说明.txt'), '仅用于 macOS 26 Intel 桌面验收的合成资料。\n');
 if (await health()) throw new Error('Test machine already has an active Connector');
 
+let browser;
 let context;
 let page;
 try {
-note('HEADFUL_CHROME_STARTING');
-context = await chromium.launchPersistentContext(join(sandbox, 'chrome-profile'), { channel: 'chrome', headless: false, acceptDownloads: true, viewport: { width: 1440, height: 900 }, args: ['--no-proxy-server'], timeout: 25_000 });
-note('HEADFUL_CHROME_CONTEXT_READY');
-page = context.pages()[0] ?? await bounded(context.newPage(), 15_000, 'Opening Chrome tab');
+note('HEADLESS_BROWSER_STARTING_WITH_NATIVE_DESKTOP');
+browser = await chromium.launch({ channel: 'chromium', headless: true, chromiumSandbox: true, args: ['--no-proxy-server'], timeout: 25_000 });
+context = await bounded(browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 900 } }), 15_000, 'Creating browser context');
+page = await bounded(context.newPage(), 15_000, 'Opening browser tab');
 page.setDefaultTimeout(20_000);
 page.setDefaultNavigationTimeout(30_000);
 note('HEADFUL_CHROME_TAB_READY');
@@ -150,13 +151,12 @@ page.on('response', async response => {
   await page.locator('#demo-submit').click();
   await page.waitForURL(url => url.pathname === '/', { waitUntil: 'domcontentloaded' });
   note('PRODUCTION_HOME_DOM_READY');
-  await screenshot('01-production-home.png');
   const downloadLink = page.getByRole('link', { name: '下载 Intel Mac' });
   const targetUrl = new URL(await downloadLink.getAttribute('href'), origin);
   if (targetUrl.origin !== origin || !targetUrl.pathname.endsWith('/' + expectedFile)) {
     throw new Error('Production download version differs from the expected checked package');
   }
-  await screenshot('01-download-entry.png');
+  await page.screenshot({ path: join(output, '01-download-entry.png'), timeout: 12_000 });
   const [download] = await Promise.all([page.waitForEvent('download', { timeout: 90_000 }), downloadLink.click()]);
   const zip = join(sandbox, expectedFile);
   await bounded(download.saveAs(zip), 90_000, 'Saving browser download');
@@ -176,7 +176,10 @@ page.on('response', async response => {
   await waitUntil(health, 60_000, 'GUI installer did not start a ready Connector within 60 seconds');
   note('INSTALL_AND_AUTOSTART_READY');
 
-  await bounded(page.bringToFront(), 8000, 'Focusing Chrome after install');
+  await page.getByText('macOS Connector 已就绪', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '已安装，连接本机' }).isEnabled().then(enabled => {
+    if (!enabled) throw new Error('The browser did not enable the connection button');
+  });
   await page.getByRole('button', { name: '已安装，连接本机' }).click();
   const statusLine = page.locator('#connector-message-text');
   await statusLine.filter({ hasText: /校验码.*\d{6}/ }).waitFor({ timeout: 30_000 });
@@ -187,19 +190,17 @@ page.on('response', async response => {
   await page.locator('#connector-step').filter({ hasText: '本机已配对' }).waitFor({ timeout: 30_000 });
   note('BROWSER_PAIRED');
 
-  await bounded(page.bringToFront(), 8000, 'Focusing Chrome to select project');
   await page.locator('#select-project-button').click();
   await selectFolder();
   await page.locator('#current-project-name').filter({ hasText: 'cio-intel-desktop-project' }).waitFor({ timeout: 45_000 });
-  await bounded(page.bringToFront(), 8000, 'Focusing Chrome to activate project');
   await page.locator('#activate-project-button').click();
   await page.locator('#workbench-step').filter({ hasText: '可以进入' }).waitFor({ timeout: 60_000 });
-  await screenshot('05-project-activated.png');
+  await page.screenshot({ path: join(output, '05-project-activated.png'), timeout: 12_000 });
 
   const [workbench] = await Promise.all([context.waitForEvent('page', { timeout: 45_000 }), page.locator('#enter-workbench').click()]);
   await workbench.getByText('顾问工作台', { exact: false }).first().waitFor({ timeout: 60_000 });
   if (new URL(workbench.url()).pathname !== '/consultant/') throw new Error('Unexpected workbench path');
-  await screenshot('06-workbench.png');
+  await workbench.screenshot({ path: join(output, '06-workbench.png'), timeout: 12_000 });
   note('INTEL_PRODUCTION_DESKTOP_FLOW_PASSED');
 } catch (error) {
   process.exitCode = 1;
@@ -210,7 +211,7 @@ page.on('response', async response => {
   if (page) await bounded(page.screenshot({ path: join(output, 'failure-browser.png'), timeout: 5000 }), 7000, 'Capturing browser').catch(() => {});
   throw error;
 } finally {
-  if (context) await bounded(context.close(), 5000, 'Closing Chrome').catch(error => {
+  if (browser) await bounded(browser.close(), 5000, 'Closing Chromium').catch(error => {
     note('CLEANUP_FAILED', error.message);
     process.exit(process.exitCode ?? 0);
   });
