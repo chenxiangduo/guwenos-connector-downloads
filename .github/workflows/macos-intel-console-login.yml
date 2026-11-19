@@ -122,15 +122,18 @@ jobs:
           APPLESCRIPT
           )
           echo 'USER_SWITCH_MENU_OPENED'
-          if tile=$(wait_for_label artifacts/fast-user-menu.png 'Connector' 1300 145 15); then
-            x=${tile%,*}
-            y=${tile#*,}
-            cliclick "c:$x,$((y - 34))"
-          else
-            cliclick "c:$relative_tile"
-          fi
+          point=$(wait_for_label artifacts/fast-user-menu.png 'Login Window' 1300 200 15) || {
+            x=${relative_tile%,*}
+            point="$((x - 72)),157"
+          }
+          printf '%s\n' "$point" > artifacts/login-window-menu-point.txt
+          cliclick "c:$point"
+          echo 'LOGIN_WINDOW_REQUESTED'
+          account_tile=$(wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 28)
+          printf '%s\n' "$account_tile" > artifacts/confirmed-login-account-label.txt
+          cliclick "c:$account_tile"
           echo 'TEST_ADMINISTRATOR_SELECTED'
-          wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 22 > artifacts/confirmed-login-account-label.txt
+          wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 15 >/dev/null
           field=$(wait_for_label artifacts/test-administrator-login.png 'Enter Password' 600 1030 15)
           echo 'TEST_ADMINISTRATOR_PASSWORD_FIELD_CONFIRMED'
           cliclick "c:$field"
