@@ -46,6 +46,9 @@ jobs:
             /bin/sleep 4
             /usr/sbin/screencapture -x artifacts/add-controls.png
             /usr/bin/osascript -e 'tell application "System Events" to get name of every application process whose frontmost is true' > artifacts/frontmost-process.txt || true
+            cliclick c:713,357
+            /bin/sleep 2
+            /usr/sbin/screencapture -x artifacts/fast-user-switching-control.png
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
