@@ -74,20 +74,17 @@ async function vmAuthorizationDialogVisible(screenshotName) {
   const filename = join(output, screenshotName);
   const { width, height, data } = pngjs.PNG.sync.read(await readFile(filename));
   if (width !== 1920 || height !== 1080) return false;
-  // The fixed CI desktop's gold padlock and blue OK button identify the captured prompt.
-  const markers = [[880, 230, 252, 195, 105], [870, 260, 228, 155, 53], [1005, 510, 10, 121, 255]];
+  // The padlock is invariant when the OK button changes appearance during input.
+  const markers = [[880, 230, 252, 195, 105], [870, 260, 228, 155, 53]];
   return markers.every(([x, y, ...rgb]) => {
     const offset = (y * width + x) * 4;
     return rgb.every((value, index) => Math.abs(data[offset + index] - value) < 8);
   });
 }
 
-async function authenticateTestAdministrator() {
+async function provisionTestAdministrator() {
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
-  if (!password || !/^[a-f0-9]{40}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
-  if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) {
-    return;
-  }
+  if (!password || !/^[a-f0-9]{20}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
   await exec('/usr/bin/sudo', ['-n', '/usr/sbin/sysadminctl', '-addUser', 'cioinstallqa', '-fullName', 'Connector VM Test Administrator', '-password', password, '-admin'], { timeout: 18_000 }).catch(() => {
     throw new Error('Creating the disposable VM administrator failed');
   });
@@ -97,6 +94,11 @@ async function authenticateTestAdministrator() {
     throw new Error('The test administrator did not authenticate against the VM user directory');
   });
   note('GATEKEEPER_VM_ADMIN_PROVISIONED');
+}
+
+async function authenticateTestAdministrator() {
+  if (!await vmAuthorizationDialogVisible('02c-gatekeeper-after-confirmation.png')) return;
+  const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
   await exec('cliclick', ['c:938,437'], { timeout: 5000 });
   const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
   const done = new Promise((resolve, reject) => {
@@ -107,8 +109,12 @@ async function authenticateTestAdministrator() {
     'tell application "System Events"',
     'keystroke "a" using command down',
     'keystroke "cioinstallqa"',
-    'key code 48',
-    'keystroke ' + JSON.stringify(password),
+    'click at {951, 469}',
+    'keystroke "a" using command down',
+    'repeat with letter in characters of ' + JSON.stringify(password),
+    'keystroke (contents of letter)',
+    'delay 0.06',
+    'end repeat',
     'end tell',
   ].join('\n'));
   await done;
@@ -124,6 +130,14 @@ async function authenticateTestAdministrator() {
       throw new Error('macOS did not dismiss the authorization prompt after submission with a verified VM administrator');
     }
   }
+}
+
+async function captureAuthorizationDiagnostics() {
+  const predicate = '(process == "authd" OR process == "SecurityAgent" OR process == "coreauthd" OR process == "syspolicyd") AND (eventMessage CONTAINS[c] "authorize" OR eventMessage CONTAINS[c] "denied" OR eventMessage CONTAINS[c] "override" OR eventMessage CONTAINS[c] "credential" OR eventMessage CONTAINS[c] "failed")';
+  const result = await exec('/usr/bin/sudo', ['-n', '/usr/bin/log', 'show', '--last', '3m', '--style', 'compact', '--predicate', predicate], { timeout: 15_000, maxBuffer: 256 * 1024 });
+  const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
+  const safe = password ? result.stdout.replaceAll(password, '[redacted]') : result.stdout;
+  await writeFile(join(output, 'macos-authorization-log.txt'), safe.split('\n').slice(-100).join('\n'));
 }
 
 async function openVerifiedInstaller(installer) {
@@ -156,6 +170,7 @@ async function openVerifiedInstaller(installer) {
     note('GATEKEEPER_OPEN_ANYWAY_PRESSED');
     await delay(2000);
     await screenshot('02b-gatekeeper-confirmation.png');
+    await provisionTestAdministrator();
     const finalConfirmed = await clickSystemButton(gatekeeperApps, ['Open Anyway', 'Open']).catch(() => false);
     if (!finalConfirmed) {
       const dimensions = await exec('/usr/bin/sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', join(output, '02b-gatekeeper-confirmation.png')], { timeout: 5000 });
@@ -357,6 +372,7 @@ page.on('response', async response => {
   process.exitCode = 1;
   note('DESKTOP_FLOW_FAILED', error.message);
   await screenshot('failure-desktop.png');
+  if (browserDownload) await captureAuthorizationDiagnostics().catch(error => note('AUTH_DIAGNOSTICS_UNAVAILABLE', error.code ?? error.signal));
   const state = page ? await bounded(page.locator('#connector-message-text').textContent({ timeout: 2000 }), 3000, 'Reading browser status').catch(() => '') : '';
   note('VISIBLE_CONNECTOR_STATUS', state?.replace(/\b\d{6}\b/g, '[code]') ?? '');
   if (page) await bounded(page.screenshot({ path: join(output, 'failure-browser.png'), timeout: 5000 }), 7000, 'Capturing browser').catch(() => {});
