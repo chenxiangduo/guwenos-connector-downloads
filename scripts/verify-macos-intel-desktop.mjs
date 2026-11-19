@@ -129,7 +129,7 @@ int main(void) {
   const windows = JSON.parse(inventory.stdout);
   await writeFile(join(output, 'authorization-window-owners.txt'), JSON.stringify(windows, null, 2));
   const panel = windows.find(([, , , bounds]) => bounds.Width >= 200 && bounds.Width <= 400 && bounds.Height >= 270 && bounds.Height <= 450);
-  if (!panel) return false;
+  if (!panel) return null;
   const [pid, owner] = panel;
   note('AUTHORIZATION_WINDOW_OWNER', owner);
   const script = [
@@ -167,7 +167,7 @@ int main(void) {
   ].join('\n');
   const result = await exec('/usr/bin/osascript', ['-e', script, String(pid)], { timeout: 12_000 });
   await writeFile(join(output, 'authorization-accessibility.txt'), result.stdout);
-  return result.stdout.trim() === 'PRESSED';
+  return result.stdout.trim() === 'PRESSED' ? { pid, owner } : null;
 }
 
 async function typeInSystemDialog(commands) {
@@ -231,26 +231,28 @@ async function authenticateTestAdministrator() {
   }
   passwordEntryVerified = true;
   note('GATEKEEPER_PASSWORD_FIELD_VERIFIED');
-  const pressed = await pressAuthorizationButton().catch(error => {
+  const approval = await pressAuthorizationButton().catch(error => {
     note('AUTHORIZATION_ACCESSIBILITY_FAILED', String(error.stderr || error.signal || error.code));
-    return false;
+    return null;
   });
-  note('AUTHORIZATION_ACCESSIBILITY_PRESSED', pressed);
-  if (!pressed) await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
+  note('AUTHORIZATION_ACCESSIBILITY_PRESSED', Boolean(approval));
+  if (!approval) await exec('cliclick', ['c:1018,512'], { timeout: 5000 });
   await delay(2000);
   await screenshot('02d-gatekeeper-auth-result.png');
-  if (await vmAuthorizationDialogVisible('02d-gatekeeper-auth-result.png')) {
-    await typeInSystemDialog(['key code 76']);
-    await delay(3500);
-    await screenshot('02e-gatekeeper-auth-recheck.png');
-    if (await vmAuthorizationDialogVisible('02e-gatekeeper-auth-recheck.png')) {
-      throw new Error('macOS did not dismiss the authorization prompt after submission with a verified VM administrator');
-    }
+  if (!await vmAuthorizationDialogVisible('02d-gatekeeper-auth-result.png')) return;
+  if (approval?.owner === 'coreautha') {
+    await exec('/usr/bin/sudo', ['-n', '/usr/bin/sample', String(approval.pid), '4', '-file', join(output, 'coreautha-sample.txt')], { timeout: 12000 }).catch(() => {});
   }
+  await waitUntil(async () => {
+    if (await health()) return true;
+    await desktop('02e-gatekeeper-auth-recheck.png');
+    return !await vmAuthorizationDialogVisible('02e-gatekeeper-auth-recheck.png');
+  }, 50_000, 'macOS did not dismiss the authorization prompt within 50 seconds after submission with a verified VM administrator');
+  note('GATEKEEPER_AUTHORIZATION_PROMPT_CLOSED');
 }
 
 async function captureAuthorizationDiagnostics() {
-  const predicate = '(process == "authd" OR process BEGINSWITH "SecurityAgent" OR process == "coreauthd" OR process == "syspolicyd") AND (eventMessage CONTAINS[c] "authoriz" OR eventMessage CONTAINS[c] "denied" OR eventMessage CONTAINS[c] "override" OR eventMessage CONTAINS[c] "credential" OR eventMessage CONTAINS[c] "failed" OR eventMessage CONTAINS[c] "interaction")';
+  const predicate = '(process BEGINSWITH "coreauth" OR ((process == "authd" OR process BEGINSWITH "SecurityAgent" OR process == "syspolicyd") AND (eventMessage CONTAINS[c] "authoriz" OR eventMessage CONTAINS[c] "denied" OR eventMessage CONTAINS[c] "override" OR eventMessage CONTAINS[c] "credential" OR eventMessage CONTAINS[c] "failed" OR eventMessage CONTAINS[c] "interaction")))';
   const result = await exec('/usr/bin/sudo', ['-n', '/usr/bin/log', 'show', '--last', '2m', '--info', '--style', 'compact', '--predicate', predicate], { timeout: 18_000, maxBuffer: 512 * 1024 });
   const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
   const safe = password ? result.stdout.replaceAll(password, '[redacted]') : result.stdout;
