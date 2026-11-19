@@ -40,6 +40,56 @@ async function waitUntil(check, timeout, label) {
   throw new Error(label);
 }
 
+async function clickSystemButton(apps, names) {
+  const script = [
+    'on run argv',
+    'set appNames to paragraphs of item 1 of argv',
+    'set buttonNames to paragraphs of item 2 of argv',
+    'tell application "System Events"',
+    'repeat with processName in appNames',
+    'try',
+    'repeat with appWindow in windows of application process (contents of processName)',
+    'repeat with element in entire contents of appWindow',
+    'try',
+    'if role of element is "AXButton" and buttonNames contains (name of element as text) then',
+    'click element',
+    'return true',
+    'end if',
+    'end try',
+    'end repeat',
+    'end repeat',
+    'end try',
+    'end repeat',
+    'end tell',
+    'return false',
+    'end run',
+  ].join('\n');
+  const result = await exec('/usr/bin/osascript', ['-e', script, apps.join('\n'), names.join('\n')], { timeout: 9000 });
+  return result.stdout.trim() === 'true';
+}
+
+async function openVerifiedInstaller(installer) {
+  const open = exec('/usr/bin/open', [installer], { timeout: 15_000 }).catch(error => note('INSTALLER_OPEN_RESULT', error.signal ?? error.code));
+  note('INSTALLER_OPEN_REQUESTED');
+  await delay(6000);
+  await screenshot('02-install-desktop.png');
+  if (nativeChrome && !await health()) {
+    const gatekeeperApps = ['CoreServicesUIAgent', 'SecurityAgent', 'syspolicyd'];
+    const dismiss = await clickSystemButton(gatekeeperApps, ['Done']).catch(() => false);
+    note('GATEKEEPER_FIRST_DIALOG_DISMISSED', dismiss);
+    await exec('/usr/bin/open', ['x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Security'], { timeout: 12_000 });
+    await delay(2500);
+    await screenshot('02a-privacy-and-security.png');
+    await waitUntil(async () => await health() || clickSystemButton(['System Settings'], ['Open Anyway']).catch(() => false), 24_000,
+      'Privacy & Security did not expose Open Anyway for the verified Connector');
+    note('GATEKEEPER_OPEN_ANYWAY_PRESSED');
+    await delay(2000);
+    await screenshot('02b-gatekeeper-confirmation.png');
+    await clickSystemButton([...gatekeeperApps, 'System Settings'], ['Open Anyway', 'Open']).catch(() => false);
+  }
+  await open;
+}
+
 async function clickPairingWhenVisible(code) {
   const script = [
     'on run argv',
@@ -194,10 +244,7 @@ page.on('response', async response => {
   await exec('/usr/bin/ditto', ['-x', '-k', zip, sandbox], { timeout: 60_000 });
   const installer = join(sandbox, 'connector', 'Install.command');
   note('INSTALLER_QUARANTINE_PRESENT', await getQuarantine(installer));
-  await exec('/usr/bin/open', [installer], { timeout: 20_000 });
-  note('INSTALLER_OPEN_REQUESTED');
-  await delay(3500);
-  await screenshot('02-install-desktop.png');
+  await openVerifiedInstaller(installer);
   await waitUntil(health, 60_000, 'GUI installer did not start a ready Connector within 60 seconds');
   note('INSTALL_AND_AUTOSTART_READY');
 
