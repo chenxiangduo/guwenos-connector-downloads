@@ -38,6 +38,7 @@ jobs:
           launchctl print "$service" > "$CIO_E2E_OUTPUT/iconservices-before.txt" 2>&1 || true
           cleanup_test_machine() {
             launchctl enable "$service" || true
+            sudo -n /usr/sbin/sysadminctl -deleteUser cioinstallqa >/dev/null 2>&1 || true
           }
           trap cleanup_test_machine EXIT
           /usr/bin/python3 - "$service" <<'PY'
