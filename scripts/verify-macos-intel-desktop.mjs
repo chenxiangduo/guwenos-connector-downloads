@@ -100,13 +100,13 @@ async function provisionTestAdministrator() {
   const loginProgram = join(sandbox, 'verify-admin-login.exp');
   await writeFile(loginProgram, `
 log_user 0
-set timeout 22
+set timeout 35
 set secret $env(CIO_TEST_VM_ADMIN_PASSWORD)
 unset env(CIO_TEST_VM_ADMIN_PASSWORD)
-spawn /usr/bin/login cioinstallqa
+spawn /usr/bin/su -l cioinstallqa
 expect {
   -re {(?i)password:} { send -- "$secret\\r" }
-  timeout { exit 21 }
+  timeout { puts stderr "Login did not show a password prompt"; exit 21 }
   eof { exit 22 }
 }
 unset secret
@@ -124,8 +124,8 @@ expect {
 expect eof
 `, { mode: 0o600 });
   try {
-    await exec('/usr/bin/expect', [loginProgram], { timeout: 65_000 });
-    note('MACOS_PASSWORD_LOGIN_CONFIRMED', user);
+    await exec('/usr/bin/expect', [loginProgram], { timeout: 85_000 });
+    note('MACOS_PASSWORD_LOGIN_SHELL_CONFIRMED', user);
   } catch (error) {
     note('MACOS_PASSWORD_LOGIN_UNCONFIRMED', error.code ?? error.signal);
   }
