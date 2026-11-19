@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 
@@ -69,6 +69,48 @@ async function clickSystemButton(apps, names) {
   return result.stdout.trim() === 'true';
 }
 
+async function screenshotRecognizes(file, pattern) {
+  const source = join(sandbox, 'screen-labels.swift');
+  await writeFile(source, [
+    'import Foundation',
+    'import Vision',
+    'let image = URL(fileURLWithPath: CommandLine.arguments[1])',
+    'let request = VNRecognizeTextRequest()',
+    'request.recognitionLevel = .accurate',
+    'try VNImageRequestHandler(url: image, options: [:]).perform([request])',
+    'for line in request.results ?? [] {',
+    '  if let text = line.topCandidates(1).first?.string { print(text) }',
+    '}',
+  ].join('\n'));
+  const result = await exec('/usr/bin/swift', [source, join(output, file)], { timeout: 25_000 });
+  return pattern.test(result.stdout);
+}
+
+async function authenticateTestAdministrator() {
+  const password = process.env.CIO_TEST_VM_ADMIN_PASSWORD;
+  if (!password || !/^[a-f0-9]{40}$/u.test(password)) throw new Error('Disposable VM administrator was not provisioned');
+  if (!await screenshotRecognizes('02c-gatekeeper-after-confirmation.png', /Enter an administrator[’']?s username/iu)) {
+    return;
+  }
+  const input = spawn('/usr/bin/osascript', ['-'], { stdio: ['pipe', 'ignore', 'ignore'], timeout: 9000 });
+  const done = new Promise((resolve, reject) => {
+    input.on('error', reject);
+    input.on('close', code => code === 0 ? resolve() : reject(new Error('Sending the disposable VM credentials failed')));
+  });
+  await exec('cliclick', ['c:938,437'], { timeout: 5000 });
+  input.stdin.end([
+    'tell application "System Events"',
+    'keystroke "a" using command down',
+    'keystroke "cioinstallqa"',
+    'key code 48',
+    'keystroke ' + JSON.stringify(password),
+    'key code 36',
+    'end tell',
+  ].join('\n'));
+  await done;
+  note('GATEKEEPER_VM_ADMIN_AUTH_SUBMITTED');
+}
+
 async function openVerifiedInstaller(installer) {
   const open = exec('/usr/bin/open', [installer], { timeout: 15_000 }).catch(error => note('INSTALLER_OPEN_RESULT', error.signal ?? error.code));
   note('INSTALLER_OPEN_REQUESTED');
@@ -107,6 +149,7 @@ async function openVerifiedInstaller(installer) {
     }
     await delay(1500);
     await screenshot('02c-gatekeeper-after-confirmation.png');
+    if (!await health()) await authenticateTestAdministrator();
   }
   await open;
 }
