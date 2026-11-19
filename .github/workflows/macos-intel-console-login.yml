@@ -91,9 +91,10 @@ jobs:
             /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
             add=$(wait_for_label "$probe/settings.png" 'Add Controls' 800 850 25) || continue
             cliclick "c:$add"
-            category=$(wait_for_label artifacts/add-controls.png 'Fast User Switching' 600 800 25) || continue
+            category=$(wait_for_label artifacts/add-controls.png 'Fast User' 600 800 15) || category=713,357
             cliclick "c:$category"
-            wait_for_label artifacts/fast-user-switching-control.png 'Fast User Switching' 850 180 15 >/dev/null || continue
+            /bin/sleep 4
+            capture artifacts/fast-user-switching-control.png || continue
             cliclick rc:969,134
             /bin/sleep 1
             capture artifacts/control-context-menu.png || true
@@ -110,12 +111,24 @@ jobs:
             menu_items > artifacts/menu-bar-controls.txt || true
             grep -q 'User' artifacts/menu-bar-controls.txt && break
           done
-          /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description is "User")'
+          relative_tile=$(/usr/bin/osascript <<'APPLESCRIPT'
+          tell application "System Events" to tell process "ControlCenter"
+            set switcher to first menu bar item of menu bar 1 whose description is "User"
+            set {leftEdge, topEdge} to position of switcher
+            set {itemWidth, itemHeight} to size of switcher
+            click switcher
+            return ((leftEdge + (itemWidth div 2) - 203) as text) & ",70"
+          end tell
+          APPLESCRIPT
+          )
           echo 'USER_SWITCH_MENU_OPENED'
-          tile=$(wait_for_label artifacts/fast-user-menu.png 'Connector' 1300 145 20)
-          x=${tile%,*}
-          y=${tile#*,}
-          cliclick "c:$x,$((y - 34))"
+          if tile=$(wait_for_label artifacts/fast-user-menu.png 'Connector' 1300 145 15); then
+            x=${tile%,*}
+            y=${tile#*,}
+            cliclick "c:$x,$((y - 34))"
+          else
+            cliclick "c:$relative_tile"
+          fi
           echo 'TEST_ADMINISTRATOR_SELECTED'
           wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 22 > artifacts/confirmed-login-account-label.txt
           field=$(wait_for_label artifacts/test-administrator-login.png 'Enter Password' 600 1030 15)
