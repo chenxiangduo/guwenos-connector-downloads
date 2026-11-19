@@ -27,8 +27,8 @@ jobs:
           launchctl bootout "$icon_service" || true
           launchctl disable "$icon_service"
           service='/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
-          test -x "$service" || { echo 'The system image does not provide the user switching command'; exit 1; }
-          CGSESSION_PATH="$service" QA_UID="$uid" /usr/bin/python3 - <<'PY'
+          if test -x "$service"; then
+            CGSESSION_PATH="$service" QA_UID="$uid" /usr/bin/python3 - <<'PY'
           import os, subprocess
           try:
               result = subprocess.run([os.environ['CGSESSION_PATH'], '-switchToUserID', os.environ['QA_UID']], capture_output=True, timeout=15)
@@ -36,9 +36,20 @@ jobs:
           except subprocess.TimeoutExpired:
               print('SWITCH_COMMAND_TIMED_OUT')
           PY
+          else
+            echo 'Using the system Lock Screen keyboard shortcut to reach Switch User.'
+            /usr/bin/osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}'
+          fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
-          /usr/sbin/screencapture -x artifacts/login-window.png || true
+          /usr/bin/python3 - <<'PY'
+          import subprocess
+          try:
+              subprocess.run(['/usr/sbin/screencapture', '-x', 'artifacts/login-window.png'], check=True, timeout=8)
+          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+              print('The test process cannot capture the system login screen.')
+          PY
+          /bin/launchctl print "gui/$uid" > artifacts/administrator-gui-status.txt 2>&1 || true
           launchctl enable "$icon_service" || true
       - uses: actions/upload-artifact@v4
         if: always()
