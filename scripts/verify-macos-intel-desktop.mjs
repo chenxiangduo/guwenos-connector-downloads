@@ -107,6 +107,18 @@ async function selectFolder() {
   await exec('cliclick', ['kd:cmd,shift', 'kp:g', 'ku:cmd,shift', 'w:700', 't:' + project, 'kp:return', 'w:1800', 'kp:return'], { timeout: 12000 });
 }
 
+async function bounded(promise, ms, name) {
+  const timer = new AbortController();
+  try {
+    return await Promise.race([
+      promise,
+      delay(ms, null, { signal: timer.signal }).then(() => { throw new Error(name + ' timed out'); }),
+    ]);
+  } finally {
+    timer.abort();
+  }
+}
+
 await mkdir(output, { recursive: true });
 await mkdir(sandbox, { recursive: true });
 const project = join(sandbox, 'cio-intel-desktop-project');
@@ -114,18 +126,23 @@ await mkdir(project, { recursive: true });
 await writeFile(join(project, '合成项目说明.txt'), '仅用于 macOS 26 Intel 桌面验收的合成资料。\n');
 if (await health()) throw new Error('Test machine already has an active Connector');
 
-const browser = await chromium.launch({ channel: 'chromium', headless: false, args: ['--no-proxy-server'] });
-const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 900 } });
-await context.grantPermissions(['local-network-access'], { origin });
+let context;
+let page;
+try {
+note('HEADFUL_CHROME_STARTING');
+context = await chromium.launchPersistentContext(join(sandbox, 'chrome-profile'), { channel: 'chrome', headless: false, acceptDownloads: true, viewport: { width: 1440, height: 900 }, args: ['--no-proxy-server'], timeout: 25_000 });
+note('HEADFUL_CHROME_CONTEXT_READY');
+page = context.pages()[0] ?? await bounded(context.newPage(), 15_000, 'Opening Chrome tab');
+note('HEADFUL_CHROME_TAB_READY');
+await bounded(context.grantPermissions(['local-network-access'], { origin }), 8000, 'Granting browser test permission');
 note('BROWSER_LOCAL_NETWORK_PERMISSION_PREGRANTED');
-const page = await context.newPage();
 page.on('response', async response => {
   if (!response.url().startsWith('http://127.0.0.1:') || !response.url().includes('/v1/pairings')) return;
   const snapshot = await response.json().catch(() => ({}));
   note('PAIRING_HTTP', [response.request().method(), response.status(), snapshot.status ?? '', snapshot.errorCode ?? ''].join(' '));
 });
 
-try {
+  note('PRODUCTION_LOGIN_NAVIGATION');
   await page.goto(origin + '/login/', { waitUntil: 'domcontentloaded' });
   await page.locator('#demo-submit').click();
   await page.waitForURL(url => url.pathname === '/');
@@ -183,10 +200,13 @@ try {
 } catch (error) {
   note('DESKTOP_FLOW_FAILED', error.message);
   await screenshot('failure-desktop.png');
-  const state = await page.locator('#connector-message-text').textContent({ timeout: 2000 }).catch(() => '');
+  const state = page ? await bounded(page.locator('#connector-message-text').textContent({ timeout: 2000 }), 3000, 'Reading browser status').catch(() => '') : '';
   note('VISIBLE_CONNECTOR_STATUS', state?.replace(/\b\d{6}\b/g, '[code]') ?? '');
-  await page.screenshot({ path: join(output, 'failure-browser.png'), timeout: 7000 }).catch(() => {});
+  if (page) await bounded(page.screenshot({ path: join(output, 'failure-browser.png'), timeout: 5000 }), 7000, 'Capturing browser').catch(() => {});
   throw error;
 } finally {
-  await browser.close();
+  if (context) await bounded(context.close(), 5000, 'Closing Chrome').catch(error => {
+    note('CLEANUP_FAILED', error.message);
+    process.exit(1);
+  });
 }
