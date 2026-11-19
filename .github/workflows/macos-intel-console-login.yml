@@ -56,7 +56,7 @@ jobs:
             return 1;
           }
           OBJC
-          clang -fobjc-arc -framework Foundation -framework Vision "$probe/label.m" -o "$probe/label"
+          clang -fobjc-arc -framework Foundation -framework CoreGraphics -framework Vision "$probe/label.m" -o "$probe/label"
           capture() { /usr/sbin/screencapture -x "$1"; }
           find_label() {
             /usr/bin/python3 - "$probe/label" "$@" <<'PY'
@@ -73,6 +73,7 @@ jobs:
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1'
           }
           for destination in 1680 1660 1701; do
+            echo "PREPARE_USER_SWITCH_CONTROL $destination"
             /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
             /bin/sleep 8
             capture "$probe/settings.png" || continue
@@ -92,16 +93,19 @@ jobs:
             grep -q 'User' artifacts/menu-bar-controls.txt && break
           done
           /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description is "User")'
+          echo 'USER_SWITCH_MENU_OPENED'
           /bin/sleep 2
           capture artifacts/fast-user-menu.png
           tile=$(find_label artifacts/fast-user-menu.png 'Connector' 1300 145)
           x=${tile%,*}
           y=${tile#*,}
           cliclick "c:$x,$((y - 34))"
+          echo 'TEST_ADMINISTRATOR_SELECTED'
           /bin/sleep 6
           capture artifacts/test-administrator-login.png
           find_label artifacts/test-administrator-login.png 'Connector' 600 1020 > artifacts/confirmed-login-account-label.txt
           field=$(find_label artifacts/test-administrator-login.png 'Enter Password' 600 1030)
+          echo 'TEST_ADMINISTRATOR_PASSWORD_FIELD_CONFIRMED'
           cliclick "c:$field"
           {
             printf 'tell application "System Events"\n'
