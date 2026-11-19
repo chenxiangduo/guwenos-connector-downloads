@@ -1,6 +1,11 @@
 name: Intel macOS 26 installer launch comparison
 on:
   workflow_dispatch:
+    inputs:
+      repair_icon_service:
+        description: Isolate the faulty icon agent on this disposable VM
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -8,6 +13,12 @@ jobs:
     runs-on: macos-26-intel
     timeout-minutes: 7
     steps:
+      - name: Isolate the failing image service for this comparison
+        if: inputs.repair_icon_service
+        run: |
+          service="gui/$(id -u)/com.apple.iconservices.iconservicesagent"
+          launchctl bootout "$service" || true
+          launchctl disable "$service"
       - name: Compare Terminal, graphical installer and direct script
         shell: bash
         run: |
@@ -92,6 +103,9 @@ jobs:
                       process.terminate()
                       process.wait(timeout=5)
           PY
+      - name: Restore the service setting
+        if: always() && inputs.repair_icon_service
+        run: launchctl enable "gui/$(id -u)/com.apple.iconservices.iconservicesagent"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
