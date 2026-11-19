@@ -72,20 +72,38 @@ jobs:
           menu_items() {
             /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get description of menu bar items of menu bar 1'
           }
+          wait_for_label() {
+            local frame=$1 label=$2 minimum_x=$3 maximum_y=$4 budget=$5 deadline=$((SECONDS + $5)) point
+            while (( SECONDS < deadline )); do
+              if capture "$frame" && point=$(find_label "$frame" "$label" "$minimum_x" "$maximum_y"); then
+                printf '%s\n' "$point"
+                return
+              fi
+              /bin/sleep 1
+            done
+            printf '%s\n' "Timed out finding $label" >&2
+            return 1
+          }
           for destination in 1680 1660 1701; do
             echo "PREPARE_USER_SWITCH_CONTROL $destination"
+            menu_items > artifacts/menu-bar-controls.txt || true
+            grep -q 'User' artifacts/menu-bar-controls.txt && break
             /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
-            /bin/sleep 8
-            capture "$probe/settings.png" || continue
-            add=$(find_label "$probe/settings.png" 'Add Controls' 800 850) || continue
+            add=$(wait_for_label "$probe/settings.png" 'Add Controls' 800 850 25) || continue
             cliclick "c:$add"
-            /bin/sleep 4
-            capture artifacts/add-controls.png || continue
-            category=$(find_label artifacts/add-controls.png 'Fast User Switching' 600 800) || continue
+            category=$(wait_for_label artifacts/add-controls.png 'Fast User Switching' 600 800 25) || continue
             cliclick "c:$category"
-            /bin/sleep 3
-            capture artifacts/fast-user-switching-control.png || continue
-            cliclick -w 250 m:969,134 dd:969,134 dm:985,130 dm:1120,105 dm:1390,55 dm:1570,26 "dm:$destination,14" "du:$destination,14"
+            wait_for_label artifacts/fast-user-switching-control.png 'Fast User Switching' 850 180 15 >/dev/null || continue
+            cliclick rc:969,134
+            /bin/sleep 1
+            capture artifacts/control-context-menu.png || true
+            if direct=$(find_label artifacts/control-context-menu.png 'Add to Menu Bar' 800 430); then
+              cliclick "c:$direct"
+              echo 'USER_SWITCH_CONTROL_ADDED_FROM_CONTEXT_MENU'
+            else
+              cliclick c:1210,260
+              cliclick -w 250 m:969,134 dd:969,134 dm:985,130 dm:1120,105 dm:1390,55 dm:1570,26 "dm:$destination,14" "du:$destination,14"
+            fi
             /bin/sleep 3
             cliclick c:1277,912
             /bin/sleep 2
@@ -94,17 +112,13 @@ jobs:
           done
           /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to click (first menu bar item of menu bar 1 whose description is "User")'
           echo 'USER_SWITCH_MENU_OPENED'
-          /bin/sleep 2
-          capture artifacts/fast-user-menu.png
-          tile=$(find_label artifacts/fast-user-menu.png 'Connector' 1300 145)
+          tile=$(wait_for_label artifacts/fast-user-menu.png 'Connector' 1300 145 20)
           x=${tile%,*}
           y=${tile#*,}
           cliclick "c:$x,$((y - 34))"
           echo 'TEST_ADMINISTRATOR_SELECTED'
-          /bin/sleep 6
-          capture artifacts/test-administrator-login.png
-          find_label artifacts/test-administrator-login.png 'Connector' 600 1020 > artifacts/confirmed-login-account-label.txt
-          field=$(find_label artifacts/test-administrator-login.png 'Enter Password' 600 1030)
+          wait_for_label artifacts/test-administrator-login.png 'Connector' 600 1020 22 > artifacts/confirmed-login-account-label.txt
+          field=$(wait_for_label artifacts/test-administrator-login.png 'Enter Password' 600 1030 15)
           echo 'TEST_ADMINISTRATOR_PASSWORD_FIELD_CONFIRMED'
           cliclick "c:$field"
           {
@@ -114,17 +128,17 @@ jobs:
           } | /usr/bin/osascript - >/dev/null 2>&1
           unset password
           for second in {1..45}; do
-            if [[ $(stat -f '%Su' /dev/console) == "$account" ]] && /bin/launchctl print "gui/$uid" >/dev/null 2>&1; then
+            if [[ $(stat -f '%Su' /dev/console) == "$account" ]] && sudo -n /bin/launchctl print "gui/$uid" >/dev/null 2>&1; then
               echo 'DISPOSABLE_ADMIN_GUI_LOGIN_VERIFIED'
               break
             fi
             /bin/sleep 1
           done
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
-          /bin/launchctl print "gui/$uid" > artifacts/administrator-gui-status.txt 2>&1 || true
+          sudo -n /bin/launchctl print "gui/$uid" > artifacts/administrator-gui-status.txt 2>&1 || true
           sysadminctl -secureTokenStatus "$account" > artifacts/secure-token-after.txt 2>&1
           test "$(stat -f '%Su' /dev/console)" = "$account"
-          /bin/launchctl print "gui/$uid" >/dev/null
+          sudo -n /bin/launchctl print "gui/$uid" >/dev/null
       - uses: actions/upload-artifact@v4
         if: always()
         with:
