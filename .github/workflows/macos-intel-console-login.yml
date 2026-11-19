@@ -14,6 +14,7 @@ jobs:
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(stat -f '%Su' /dev/console)" = "$(id -un)"
+          which cliclick || brew install cliclick
           mkdir -p artifacts
           account=cioinstallqa
           password="$(/usr/bin/openssl rand -hex 10)"
@@ -41,6 +42,10 @@ jobs:
             /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
             /bin/sleep 6
             /usr/bin/osascript -e 'tell application "System Events" to tell process "System Settings" to get name of windows' > artifacts/settings-window-names.txt || true
+            cliclick c:907,475
+            /bin/sleep 4
+            /usr/sbin/screencapture -x artifacts/add-controls.png
+            /usr/bin/osascript -e 'tell application "System Events" to get name of every application process whose frontmost is true' > artifacts/frontmost-process.txt || true
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
