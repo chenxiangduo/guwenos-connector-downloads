@@ -37,8 +37,10 @@ jobs:
               print('SWITCH_COMMAND_TIMED_OUT')
           PY
           else
-            echo 'Using the system Lock Screen keyboard shortcut to reach Switch User.'
-            /usr/bin/osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}'
+            echo 'Opening the system Menu Bar or Control Center configuration for Fast User Switching.'
+            /usr/bin/open 'x-apple.systempreferences:com.apple.ControlCenter-Settings.extension'
+            /bin/sleep 6
+            /usr/bin/osascript -e 'tell application "System Events" to tell process "System Settings" to get name of windows' > artifacts/settings-window-names.txt || true
           fi
           /bin/sleep 5
           stat -f '%Su' /dev/console | tee artifacts/current-console-user.txt
